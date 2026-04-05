@@ -38,7 +38,8 @@ def load_knowledge_base():
         model="models/gemini-embedding-001", 
         google_api_key=GEMINI_API_KEY
     )
-    return Chroma.from_documents(docs, embeddings)
+    # Using FAISS instead of Chroma to fix the Python 3.14 error
+    return FAISS.from_documents(docs, embeddings)
 
 vector_db = load_knowledge_base()
 
