@@ -17,31 +17,24 @@ GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
 # --- 2. FAST PDF LOADING (THE CACHE) ---
+
 @st.cache_resource
 def load_data():
     loader = PyPDFLoader("travel_sample.pdf")
     pages = loader.load()
     
-    # INCREASE chunk size to reduce the number of API calls
+    # 1. BIGGER CHUNKS = FEWER API CALLS
+    # 2000 characters per chunk means half the requests vs 1000.
     splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
     docs = splitter.split_documents(pages)
     
-    # ADD task_type to help the API understand the request
     embeddings = GoogleGenerativeAIEmbeddings(
         model="models/embedding-001", 
-        google_api_key=GEMINI_API_KEY,
-        task_type="retrieval_document" # This is optimized for FAISS
+        google_api_key=GEMINI_API_KEY
     )
     
-    # THE FIX: Wrap the FAISS creation in a try/except to see the real error
-    try:
-        vector_db = FAISS.from_documents(docs, embeddings)
-        return vector_db
-    except Exception as e:
-        st.error(f"Embedding Error: {str(e)}")
-        st.info("Check if your Gemini API key is valid and you haven't hit the limit.")
-        return None
-    # Vector Store (FAISS is faster & stable for Python 3.14)
+    # 2. Add a 'Batch' delay if needed
+    # Some LangChain versions allow batching to avoid hitting RPM
     return FAISS.from_documents(docs, embeddings)
 
 vector_db = load_data()
