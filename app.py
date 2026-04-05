@@ -74,7 +74,7 @@ llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY).bind_tools
 
 # --- CHAT INTERFACE ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [SystemMessage(content="You are a professional travel assistant.")]
+    st.session_state.messages = [SystemMessage(content="You are a professional travel assistant. Use the travel_kb tool to answer questions about the PDF.")]
 
 # Display history
 for m in st.session_state.messages:
@@ -82,21 +82,35 @@ for m in st.session_state.messages:
     elif isinstance(m, AIMessage) and m.content: st.chat_message("assistant").write(m.content)
 
 # Handle Input
-if prompt := st.chat_input():
-    st.chat_message("user").write(prompt)
-    st.session_state.messages.append(HumanMessage(content=prompt))
+if user_query := st.chat_input("Ask me about your travel plan..."):
+    st.chat_message("user").write(user_query)
+    st.session_state.messages.append(HumanMessage(content=user_query))
 
     with st.chat_message("assistant"):
-        ai_msg = llm.invoke(st.session_state.messages)
-        st.session_state.messages.append(ai_msg)
+        # 1. First call: AI decides if it needs the tool
+        response = llm.invoke(st.session_state.messages)
         
-        if ai_msg.tool_calls:
-            for tool_call in ai_msg.tool_calls:
-                res = tool_map[tool_call["name"]].invoke(tool_call["args"])
-                st.session_state.messages.append(ToolMessage(content=str(res), tool_call_id=tool_call["id"]))
+        # 2. If the AI wants to use a tool (the "silent" phase)
+        if response.tool_calls:
+            st.session_state.messages.append(response) # Save the tool call request
             
-            final_res = llm.invoke(st.session_state.messages)
-            st.markdown(final_res.content)
-            st.session_state.messages.append(final_res)
+            for tool_call in response.tool_calls:
+                # Execute the actual Python function
+                status_text = st.status(f"Searching travel guide for: {tool_call['args']['query']}...")
+                tool_output = tool_map[tool_call["name"]].invoke(tool_call["args"])
+                status_text.update(label="Information found!", state="complete")
+                
+                # Add the result to history so the AI can see it
+                st.session_state.messages.append(
+                    ToolMessage(content=str(tool_output), tool_call_id=tool_call["id"])
+                )
+            
+            # 3. Second call: AI reads the tool output and writes the final answer
+            final_response = llm.invoke(st.session_state.messages)
+            st.markdown(final_response.content)
+            st.session_state.messages.append(final_response)
+        
         else:
-            st.markdown(ai_msg.content)
+            # If no tool was needed, just show the response
+            st.markdown(response.content)
+            st.session_state.messages.append(response)
