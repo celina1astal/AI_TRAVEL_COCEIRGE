@@ -94,6 +94,7 @@ if user_query := st.chat_input("Ask about your trip..."):
         # 2. Call the LLM with the FULL history (including the new message)
         # This forces the LLM to move past the old "Goa" response
         response = llm.invoke(st.session_state.messages)
+        st.write("DEBUG: AI is thinking...") # If you see this, the LLM is working
         
         if response.tool_calls:
             # Add the tool call to history so the AI knows it's working on it
