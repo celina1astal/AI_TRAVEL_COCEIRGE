@@ -118,6 +118,7 @@ if user_query := st.chat_input("Ask about your trip..."):
             # If no tool is needed, just show the plain response
             st.markdown(response.content)
             st.session_state.messages.append(response)
+            # 4. CRITICAL: Force a rerun to clear the "input" state
+            st.rerun()
 
-    # 4. CRITICAL: Force a rerun to clear the "input" state
-    st.rerun()
+   
