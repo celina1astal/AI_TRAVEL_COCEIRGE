@@ -5,7 +5,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains import RetrievalQA
+from langchain_community.chains import RetrievalQA
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage, AIMessage
 
