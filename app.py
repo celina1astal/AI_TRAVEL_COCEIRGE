@@ -86,40 +86,42 @@ for m in st.session_state.messages:
 
 # --- CHAT INPUT & AGENT LOOP ---
 if user_query := st.chat_input("Ask about your trip..."):
-    # 1. Immediately show the user's new message
     st.chat_message("user").write(user_query)
     st.session_state.messages.append(HumanMessage(content=user_query))
 
     with st.chat_message("assistant"):
-        # 2. Call the LLM with the FULL history (including the new message)
-        # This forces the LLM to move past the old "Goa" response
+        # STEP 1: INITIAL CALL
         response = llm.invoke(st.session_state.messages)
-        st.write("DEBUG: AI is thinking...") # If you see this, the LLM is working
         
-        if response.tool_calls:
-            # Add the tool call to history so the AI knows it's working on it
+        # STEP 2: TOOL HANDLING (IF NEEDED)
+        if hasattr(response, 'tool_calls') and response.tool_calls:
             st.session_state.messages.append(response) 
             
             for tool_call in response.tool_calls:
                 with st.status(f"Searching: {tool_call['args']['query']}...") as status:
+                    # Run the tool
                     tool_output = tool_map[tool_call["name"]].invoke(tool_call["args"])
                     status.update(label="Information found!", state="complete")
                 
-                # Add the result to history
+                # IMPORTANT: Send the result back to the AI
                 st.session_state.messages.append(
-                    ToolMessage(content=str(tool_output), tool_call_id=tool_call["id"])
+                    ToolMessage(
+                        content=str(tool_output), 
+                        tool_call_id=tool_call["id"] # Required for 2026 LangChain
+                    )
                 )
             
-            # 3. Get the NEW final answer
-            final_response = llm.invoke(st.session_state.messages)
-            st.markdown(final_response.content)
-            st.session_state.messages.append(final_response)
-            
-        else:
-            # If no tool is needed, just show the plain response
+            # STEP 3: FINAL CALL (Tell AI to read the tool output)
+            response = llm.invoke(st.session_state.messages)
+
+        # STEP 4: UNIVERSAL DISPLAY (This ensures you see a response)
+        if response.content:
             st.markdown(response.content)
             st.session_state.messages.append(response)
-            # 4. CRITICAL: Force a rerun to clear the "input" state
-            st.rerun()
+        else:
+            # Fallback if the AI returned an empty string
+            error_msg = "I found the info, but had trouble summarizing it. Please try asking again!"
+            st.warning(error_msg)
+            st.session_state.messages.append(AIMessage(content=error_msg))
 
    
