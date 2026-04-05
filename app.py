@@ -19,24 +19,28 @@ GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 # --- 2. FAST PDF LOADING (THE CACHE) ---
 @st.cache_resource
 def load_data():
-    if not os.path.exists("travel_sample.pdf"):
-        st.error("Missing 'travel_sample.pdf'! Upload it to Colab/GitHub.")
-        return None
-    
-    # Load and Split
     loader = PyPDFLoader("travel_sample.pdf")
     pages = loader.load()
     
-    # Optimized Splitter for speed
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
+    # INCREASE chunk size to reduce the number of API calls
+    splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
     docs = splitter.split_documents(pages)
     
-    # Embeddings (Google)
+    # ADD task_type to help the API understand the request
     embeddings = GoogleGenerativeAIEmbeddings(
         model="models/embedding-001", 
-        google_api_key=GEMINI_API_KEY
+        google_api_key=GEMINI_API_KEY,
+        task_type="retrieval_document" # This is optimized for FAISS
     )
     
+    # THE FIX: Wrap the FAISS creation in a try/except to see the real error
+    try:
+        vector_db = FAISS.from_documents(docs, embeddings)
+        return vector_db
+    except Exception as e:
+        st.error(f"Embedding Error: {str(e)}")
+        st.info("Check if your Gemini API key is valid and you haven't hit the limit.")
+        return None
     # Vector Store (FAISS is faster & stable for Python 3.14)
     return FAISS.from_documents(docs, embeddings)
 
