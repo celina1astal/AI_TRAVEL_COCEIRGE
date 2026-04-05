@@ -2,31 +2,30 @@ import streamlit as st
 import os
 from langchain_groq import ChatGroq
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import FAISS  # Swapped from Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# FIXED 2026 IMPORTS (Note the _classic)
+# Modern 2026 Imports
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_classic.chains import create_retrieval_chain
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage, AIMessage
 
-# --- CONFIG & KEYS ---
+# --- PAGE CONFIG ---
 st.set_page_config(page_title="Travel AI Concierge", page_icon="✈️")
 st.title("✈️ Travel AI Concierge")
 
-# Streamlit Cloud reads these from Advanced Settings > Secrets
+# Secrets from Streamlit Cloud (Advanced Settings > Secrets)
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
 
-# --- DATA PROCESSING (RAG) ---
+# --- DATA PROCESSING (RAG with FAISS) ---
 @st.cache_resource
 def load_knowledge_base():
     if not os.path.exists("travel_sample.pdf"):
-        st.error("Please upload 'travel_sample.pdf' to your GitHub repo!")
+        st.error("Error: 'travel_sample.pdf' not found in GitHub repository!")
         return None
     
     loader = PyPDFLoader("travel_sample.pdf")
@@ -38,12 +37,12 @@ def load_knowledge_base():
         model="models/gemini-embedding-001", 
         google_api_key=GEMINI_API_KEY
     )
-    # Using FAISS instead of Chroma to fix the Python 3.14 error
+    # Using FAISS for Python 3.14 compatibility
     return FAISS.from_documents(docs, embeddings)
 
 vector_db = load_knowledge_base()
 
-# --- TOOLS ---
+# --- TOOL DEFINITION ---
 @tool
 def travel_kb(query: str):
     """Search the travel PDF for specific answers about trips, hotels, or flights."""
@@ -59,7 +58,7 @@ def travel_kb(query: str):
         ("human", "{input}"),
     ])
 
-    # Modern Chain Logic
+    # Retrieval logic
     question_answer_chain = create_stuff_documents_chain(llm_rag, prompt)
     rag_chain = create_retrieval_chain(vector_db.as_retriever(), question_answer_chain)
     
@@ -72,45 +71,46 @@ tool_map = {t.name: t for t in tools}
 # --- LLM BINDING ---
 llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY).bind_tools(tools)
 
-# --- CHAT INTERFACE ---
+# --- CHAT SESSION STATE ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [SystemMessage(content="You are a professional travel assistant. Use the travel_kb tool to answer questions about the PDF.")]
+    st.session_state.messages = [
+        SystemMessage(content="You are a professional travel assistant. Use the travel_kb tool to answer questions about the PDF.")
+    ]
 
 # Display history
 for m in st.session_state.messages:
-    if isinstance(m, HumanMessage): st.chat_message("user").write(m.content)
-    elif isinstance(m, AIMessage) and m.content: st.chat_message("assistant").write(m.content)
+    if isinstance(m, HumanMessage): 
+        st.chat_message("user").write(m.content)
+    elif isinstance(m, AIMessage) and m.content: 
+        st.chat_message("assistant").write(m.content)
 
-# Handle Input
-if user_query := st.chat_input("Ask me about your travel plan..."):
+# --- CHAT INPUT & AGENT LOOP ---
+if user_query := st.chat_input("Ask about your trip..."):
     st.chat_message("user").write(user_query)
     st.session_state.messages.append(HumanMessage(content=user_query))
 
     with st.chat_message("assistant"):
-        # 1. First call: AI decides if it needs the tool
+        # Step 1: LLM decides if it needs the tool
         response = llm.invoke(st.session_state.messages)
         
-        # 2. If the AI wants to use a tool (the "silent" phase)
         if response.tool_calls:
-            st.session_state.messages.append(response) # Save the tool call request
+            st.session_state.messages.append(response) # Save the call request
             
             for tool_call in response.tool_calls:
-                # Execute the actual Python function
-                status_text = st.status(f"Searching travel guide for: {tool_call['args']['query']}...")
-                tool_output = tool_map[tool_call["name"]].invoke(tool_call["args"])
-                status_text.update(label="Information found!", state="complete")
+                # Step 2: Run the PDF search
+                with st.status(f"Searching PDF for: {tool_call['args']['query']}...") as status:
+                    tool_output = tool_map[tool_call["name"]].invoke(tool_call["args"])
+                    status.update(label="Information found!", state="complete")
                 
-                # Add the result to history so the AI can see it
+                # Step 3: Provide the result back to the LLM
                 st.session_state.messages.append(
                     ToolMessage(content=str(tool_output), tool_call_id=tool_call["id"])
                 )
             
-            # 3. Second call: AI reads the tool output and writes the final answer
+            # Step 4: Final response generation
             final_response = llm.invoke(st.session_state.messages)
-            st.markdown(final_response.content)
+            st.markdown(final_res := final_response.content)
             st.session_state.messages.append(final_response)
-        
         else:
-            # If no tool was needed, just show the response
             st.markdown(response.content)
             st.session_state.messages.append(response)
