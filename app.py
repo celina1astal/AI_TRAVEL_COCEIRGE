@@ -9,7 +9,7 @@ from langchain.tools import tool
 from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage, AIMessage
 
 # --- 1. PAGE CONFIG & SECRETS ---
-st.set_page_config(page_title="B.E. Travel Agent", page_icon="✈️")
+st.set_page_config(page_title="Travel Agent", page_icon="✈️")
 st.title("✈️ AI Travel Concierge")
 
 # If running in Colab, ensure these are set in your environment or Secrets
