@@ -86,31 +86,38 @@ for m in st.session_state.messages:
 
 # --- CHAT INPUT & AGENT LOOP ---
 if user_query := st.chat_input("Ask about your trip..."):
+    # 1. Immediately show the user's new message
     st.chat_message("user").write(user_query)
     st.session_state.messages.append(HumanMessage(content=user_query))
 
     with st.chat_message("assistant"):
-        # Step 1: LLM decides if it needs the tool
+        # 2. Call the LLM with the FULL history (including the new message)
+        # This forces the LLM to move past the old "Goa" response
         response = llm.invoke(st.session_state.messages)
         
         if response.tool_calls:
-            st.session_state.messages.append(response) # Save the call request
+            # Add the tool call to history so the AI knows it's working on it
+            st.session_state.messages.append(response) 
             
             for tool_call in response.tool_calls:
-                # Step 2: Run the PDF search
-                with st.status(f"Searching PDF for: {tool_call['args']['query']}...") as status:
+                with st.status(f"Searching: {tool_call['args']['query']}...") as status:
                     tool_output = tool_map[tool_call["name"]].invoke(tool_call["args"])
                     status.update(label="Information found!", state="complete")
                 
-                # Step 3: Provide the result back to the LLM
+                # Add the result to history
                 st.session_state.messages.append(
                     ToolMessage(content=str(tool_output), tool_call_id=tool_call["id"])
                 )
             
-            # Step 4: Final response generation
+            # 3. Get the NEW final answer
             final_response = llm.invoke(st.session_state.messages)
-            st.markdown(final_res := final_response.content)
+            st.markdown(final_response.content)
             st.session_state.messages.append(final_response)
+            
         else:
+            # If no tool is needed, just show the plain response
             st.markdown(response.content)
             st.session_state.messages.append(response)
+
+    # 4. CRITICAL: Force a rerun to clear the "input" state
+    st.rerun()
