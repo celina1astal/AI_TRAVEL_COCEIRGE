@@ -1,5 +1,5 @@
 streamlit
-langchain>=0.3.0
+langchain
 langchain-community
 langchain-core
 langchain-classic
@@ -7,3 +7,7 @@ langchain-groq
 langchain-google-genai
 chromadb
 pypdf
+# FIXES FOR 2026 PYTHON 3.14 COMPATIBILITY:
+protobuf~=4.25.0
+opentelemetry-api
+opentelemetry-sdk
