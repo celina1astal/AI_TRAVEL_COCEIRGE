@@ -58,7 +58,7 @@ def search_travel_pdf(query: str):
     return "Local knowledge base is currently unavailable."
 
 # Modern Tavily & Wikipedia tools
-web_search = TavilySearch(max_results=2)
+web_search = TavilySearch(max_results=4)
 wiki_api = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=800)
 wiki_search = WikipediaQueryRun(api_wrapper=wiki_api)
 
