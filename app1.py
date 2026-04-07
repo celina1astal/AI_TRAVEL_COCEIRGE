@@ -6,7 +6,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.tools import tool
-from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_tavily import TavilySearchResults
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage, AIMessage
@@ -45,22 +45,17 @@ vector_db = load_data()
 
 # --- 3. TOOL DEFINITIONS ---
 
-@tool
-def search_travel_pdf(query: str):
-    """Searches the internal travel manual for specific flights or plans."""
-    docs = vector_db.similarity_search(query, k=3)
-    return "\n".join([d.page_content for d in docs])
-
-# New Tools
+# The new, non-deprecated way to call Tavily
 web_search = TavilySearchResults(max_results=2)
+
+# This will now work because 'pip install wikipedia' was run
 wiki_api = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=800)
 wiki_search = WikipediaQueryRun(api_wrapper=wiki_api)
 
-# Tool Registry
-tools = [search_travel_pdf, web_search, wiki_search]
+# Ensure the Tool Map uses the correct string for Tavily
 tool_map = {
     "search_travel_pdf": search_travel_pdf,
-    "tavily_search_results_json": web_search,
+    "tavily_search_results_json": web_search, # This name is what the model expects
     "wikipedia": wiki_search
 }
 
