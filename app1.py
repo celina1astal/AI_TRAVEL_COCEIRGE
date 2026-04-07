@@ -24,25 +24,23 @@ TAVILY_API_KEY = st.secrets.get("TAVILY_API_KEY")
 os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY or ""
 
 # --- 2. PDF DATA LOADING (CACHED) ---
+# --- 2. PDF DATA LOADING (CACHED) ---
 @st.cache_resource
 def load_data():
-    if not os.path.exists("travel_sample.pdf"):
-        st.error("Missing 'travel_sample.pdf'!")
-        return None
+    # ... (loader and splitter code) ...
     
-    loader = PyPDFLoader("travel_sample.pdf")
-    pages = loader.load()
-    splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
-    docs = splitter.split_documents(pages)
-    
+    # FIX IS HERE:
     embeddings = GoogleGenerativeAIEmbeddings(
         model="models/embedding-001", 
-        google_api_key=GEMINI_API_KEY
+        google_api_key=st.secrets["GEMINI_API_KEY"] # Explicitly use secrets here
     )
-    return FAISS.from_documents(docs, embeddings)
-
-vector_db = load_data()
-
+    
+    # Add a try-except here to see the REAL error if it fails
+    try:
+        return FAISS.from_documents(docs, embeddings)
+    except Exception as e:
+        st.error(f"Embedding Error: {str(e)}")
+        st.stop()
 # --- 3. TOOL DEFINITIONS ---
 
 # The new, non-deprecated way to call Tavily
