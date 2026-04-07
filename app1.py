@@ -34,7 +34,7 @@ def load_vector_db():
         docs = splitter.split_documents(pages)
         
         embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001", 
+            model="models/gemini-embedding-001", 
             google_api_key=GEMINI_API_KEY
         )
         return FAISS.from_documents(docs, embeddings)
