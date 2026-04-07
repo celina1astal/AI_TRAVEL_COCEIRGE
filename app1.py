@@ -58,7 +58,7 @@ def search_travel_pdf(query: str):
     return "Local knowledge base is currently unavailable."
 
 # Modern Tavily & Wikipedia tools
-web_search = TavilySearch(max_results=4)
+web_search = TavilySearch(max_results=4, search_depth="advanced")
 wiki_api = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=800)
 wiki_search = WikipediaQueryRun(api_wrapper=wiki_api)
 
@@ -67,15 +67,13 @@ wiki_search = WikipediaQueryRun(api_wrapper=wiki_api)
 tools = [search_travel_pdf, web_search, wiki_search]
 
 tool_map = {
-    # PDF Tool
+  tool_map = {
     "search_travel_pdf": search_travel_pdf,
-    
-    # Web Search (Add both common names the AI might use)
-    "tavily_search_results_json": web_search,
-    "tavily_search": web_search, 
-    
-    # Wikipedia
+    "tavily_search_results_json": web_search, # Standard LangChain name
+    "tavily_search": web_search,             # Common LLM hallucination
+    "google_search": web_search,             # Backup name
     "wikipedia": wiki_search
+}
 }
 
 # --- 5. LLM SETUP ---
@@ -90,7 +88,9 @@ if "messages" not in st.session_state:
         - For greetings like 'Hi' or 'Hello', just reply politely without using tools.
         - Use 'search_travel_pdf' ONLY for flights/plans in the user's documents.
         - Use 'tavily_search_results_json' for live web info like weather.
-        - Use 'wikipedia' only for general history or landmarks.""")
+        - Use 'wikipedia' only for general history or landmarks.
+        - When asked for weather, use the 'tavily_search_results_json' tool.
+        - IMPORTANT: Formulate your search query as 'Current temperature and weather conditions in [City] today' to get better results.""")
     ]
 # Display Chat History
 for m in st.session_state.messages:
