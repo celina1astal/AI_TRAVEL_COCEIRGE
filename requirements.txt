@@ -7,3 +7,10 @@ langchain-groq
 langchain-google-genai
 faiss-cpu
 pypdf
+
+langchain-groq
+langchain-google-genai
+langchain-text-splitters
+tavily-python
+langchain-tavily
+wikipedia
