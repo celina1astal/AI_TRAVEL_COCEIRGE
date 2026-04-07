@@ -107,4 +107,28 @@ if user_input := st.chat_input("Ask me about your trip..."):
         response = llm.invoke(st.session_state.messages)
         
         # Handle Tool Calling
-        if hasattr(response, 'tool_calls') and response.tool
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            st.session_state.messages.append(response)
+            
+            for tool_call in response.tool_calls:
+                t_name = tool_call["name"]
+                t_args = tool_call["args"]
+                
+                with st.status(f"Consulting {t_name}...") as status:
+                    if t_name in tool_map:
+                        result = tool_map[t_name].invoke(t_args)
+                        status.update(label=f"Done: {t_name}", state="complete")
+                    else:
+                        result = f"Error: Tool '{t_name}' not found."
+                        status.update(label="Error", state="error")
+                
+                st.session_state.messages.append(
+                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                )
+            
+            # Final summary call
+            response = llm.invoke(st.session_state.messages)
+
+        if response.content:
+            st.markdown(response.content)
+            st.session_state.messages.append(response)
