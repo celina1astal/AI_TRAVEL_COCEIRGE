@@ -6,6 +6,10 @@ from langchain_community.vectorstores import FAISS  # Swapped from Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_community.tools import WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
+
 # FIXED 2026 IMPORTS (Note the _classic)
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_classic.chains import create_retrieval_chain
