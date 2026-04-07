@@ -67,8 +67,14 @@ wiki_search = WikipediaQueryRun(api_wrapper=wiki_api)
 tools = [search_travel_pdf, web_search, wiki_search]
 
 tool_map = {
+    # PDF Tool
     "search_travel_pdf": search_travel_pdf,
-    "tavily_search_results_json": web_search, # Name LLM uses for Tavily
+    
+    # Web Search (Add both common names the AI might use)
+    "tavily_search_results_json": web_search,
+    "tavily_search": web_search, 
+    
+    # Wikipedia
     "wikipedia": wiki_search
 }
 
