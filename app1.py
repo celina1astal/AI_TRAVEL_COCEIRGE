@@ -79,8 +79,13 @@ llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY).bind_tools
 st.title("✈️ AI Travel Agent")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [SystemMessage(content="You are a professional travel agent.")]
-
+    st.session_state.messages = [
+        SystemMessage(content="""You are a professional travel agent. 
+        - For greetings like 'Hi' or 'Hello', just reply politely without using tools.
+        - Use 'search_travel_pdf' ONLY for flights/plans in the user's documents.
+        - Use 'tavily_search_results_json' for live web info like weather.
+        - Use 'wikipedia' only for general history or landmarks.""")
+    ]
 # Display Chat History
 for m in st.session_state.messages:
     if isinstance(m, HumanMessage):
