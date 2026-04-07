@@ -44,7 +44,7 @@ def load_data():
 # --- 3. TOOL DEFINITIONS ---
 
 # The new, non-deprecated way to call Tavily
-web_search = TavilySearchResults(max_results=2)
+web_search = TavilySearch(max_results=2)
 
 # This will now work because 'pip install wikipedia' was run
 wiki_api = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=800)
