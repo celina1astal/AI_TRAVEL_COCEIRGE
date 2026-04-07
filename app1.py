@@ -27,19 +27,25 @@ def load_vector_db():
         st.error("File 'travel_sample.pdf' not found!")
         return None
     
-    loader = PyPDFLoader("travel_sample.pdf")
-    pages = loader.load()
-    splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
-    docs = splitter.split_documents(pages)
+    try:
+        loader = PyPDFLoader("travel_sample.pdf")
+        pages = loader.load()
+        # Increase chunk size to 3000 to reduce the number of API calls (avoids rate limits)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=200)
+        docs = splitter.split_documents(pages)
+        
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/embedding-001", 
+            google_api_key=GEMINI_API_KEY # Uses the key fetched at the top
+        )
+        
+        # This is where the error happens - we wrap it in a try/except
+        return FAISS.from_documents(docs, embeddings)
     
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001", 
-        google_api_key=GEMINI_API_KEY
-    )
-    return FAISS.from_documents(docs, embeddings)
-
-# IMPORTANT: Define vector_db globally BEFORE the tool uses it
-vector_db = load_vector_db()
+    except Exception as e:
+        st.error(f"❌ Google AI Error: {str(e)}")
+        # This allows the app to keep running even if the PDF part fails
+        return None
 
 # --- 3. TOOL DEFINITIONS ---
 
