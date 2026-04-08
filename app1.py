@@ -23,14 +23,14 @@ os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY or ""
 @st.cache_resource
 def load_vector_db():
     if not os.path.exists("travel_sample.pdf"):
-        st.error("Please upload 'travel_sample.pdf' to your GitHub repository.")
+        st.error("Error: 'travel_sample.pdf' not found. Please ensure it is in your project root.")
         return None
     
     try:
         loader = PyPDFLoader("travel_sample.pdf")
         pages = loader.load()
-        # Larger chunks to stay within Google's Free Tier rate limits
-        splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=200)
+        # Chunks optimized for Llama-3 reasoning
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=150)
         docs = splitter.split_documents(pages)
         
         embeddings = GoogleGenerativeAIEmbeddings(
@@ -42,30 +42,24 @@ def load_vector_db():
         st.sidebar.error(f"PDF Vector Error: {e}")
         return None
 
-# Global Variable for the Database
 vector_db = load_vector_db()
 
 # --- 3. TOOL DEFINITIONS ---
 
 @tool
 def search_travel_pdf(query: str):
-    """Searches the internal travel manual for specific itineraries or flight codes."""
+    """Searches the internal travel manual for specific itineraries, flight codes, or hotel lists."""
     if vector_db:
         docs = vector_db.similarity_search(query, k=3)
         return "\n".join([d.page_content for d in docs])
     return "Knowledge base not initialized. Check API keys."
 
-# Modern Tavily with Advanced Search for better weather/live data
 web_search = TavilySearch(max_results=3, search_depth="advanced")
-
-# Wikipedia Setup
 wiki_api = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=1000)
 wiki_search = WikipediaQueryRun(api_wrapper=wiki_api)
 
-# --- 4. THE TOOL REGISTRY (Fixed Syntax & Order) ---
+# Mapping dictionary to handle variant tool names returned by different LLMs
 tools = [search_travel_pdf, web_search, wiki_search]
-
-# Mapping aliases so the LLM never gets a 'Tool Not Found' error
 tool_map = {
     "search_travel_pdf": search_travel_pdf,
     "tavily_search_results_json": web_search,
@@ -73,62 +67,71 @@ tool_map = {
     "wikipedia": wiki_search
 }
 
-# --- 5. AGENT SETUP ---
+# --- 4. AGENT SETUP ---
 llm = ChatGroq(
     model="llama-3.3-70b-versatile", 
     api_key=GROQ_API_KEY
 ).bind_tools(tools)
 
-# --- 6. CHAT INTERFACE ---
+# --- 5. CHAT INTERFACE ---
 st.title("✈️ AI Travel Concierge")
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
         SystemMessage(content="""You are a professional travel agent. 
-        - For greetings like 'Hi', 'Hello', or 'How are you', reply politely WITHOUT using any tools.
-        - Use 'search_travel_pdf' for internal flight/plan data.
-        - Use 'tavily_search_results_json' for live weather or news.
-        - Use 'wikipedia' ONLY for historical landmarks or general geography.""")
+        - For greetings, reply politely without tools.
+        - Use 'search_travel_pdf' for internal flight/plan data from the manual.
+        - Use 'tavily_search_results_json' for live weather, prices, or current news.
+        - Use 'wikipedia' for historical landmarks or general geography.""")
     ]
 
-# Display history
+# Display history (Filtering out ToolMessages from UI for cleanliness)
 for m in st.session_state.messages:
     if isinstance(m, HumanMessage):
         st.chat_message("user").write(m.content)
     elif isinstance(m, AIMessage) and m.content:
         st.chat_message("assistant").write(m.content)
 
-# --- 7. AGENT EXECUTION LOOP ---
+# --- 6. AGENT EXECUTION LOOP ---
 if user_input := st.chat_input("Ask me about your trip..."):
     st.chat_message("user").write(user_input)
     st.session_state.messages.append(HumanMessage(content=user_input))
 
     with st.chat_message("assistant"):
-        response = llm.invoke(st.session_state.messages)
+        # SAFETY: Trim history to last 6 messages + System Prompt to prevent Token Overflows (BadRequestError)
+        # This keeps the context concise but relevant.
+        history_buffer = [st.session_state.messages[0]] + st.session_state.messages[-6:]
         
-        # Handle Tool Calling
-        if hasattr(response, 'tool_calls') and response.tool_calls:
+        # First iteration
+        response = llm.invoke(history_buffer)
+        
+        # Process Tool Calls (Limited to 3 iterations to prevent infinite loops)
+        max_turns = 3
+        while hasattr(response, 'tool_calls') and response.tool_calls and max_turns > 0:
             st.session_state.messages.append(response)
             
             for tool_call in response.tool_calls:
                 t_name = tool_call["name"]
                 t_args = tool_call["args"]
                 
-                with st.status(f"Consulting {t_name}...") as status:
+                with st.status(f"Acting as Concierge: {t_name}...", expanded=False) as status:
                     if t_name in tool_map:
                         result = tool_map[t_name].invoke(t_args)
-                        status.update(label=f"Done: {t_name}", state="complete")
+                        status.update(label=f"Data retrieved via {t_name}", state="complete")
                     else:
-                        result = f"Error: Tool '{t_name}' not found."
-                        status.update(label="Error", state="error")
+                        result = f"Error: Tool '{t_name}' is not available."
+                        status.update(label="Configuration Error", state="error")
                 
                 st.session_state.messages.append(
                     ToolMessage(content=str(result), tool_call_id=tool_call["id"])
                 )
             
-            # Final summary call
-            response = llm.invoke(st.session_state.messages)
+            # Re-summarize with new tool info
+            history_buffer = [st.session_state.messages[0]] + st.session_state.messages[-10:]
+            response = llm.invoke(history_buffer)
+            max_turns -= 1
 
+        # Final UI Output
         if response.content:
             st.markdown(response.content)
             st.session_state.messages.append(response)
