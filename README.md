@@ -1,4 +1,3 @@
-**1. Project Title & Catchy Description**
 
  **✈️ AI Travel Concierge: Multi-Modal RAG Agent**
 
