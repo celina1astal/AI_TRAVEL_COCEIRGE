@@ -71,9 +71,9 @@ Explain the **"Brain"** of our app :
 
 ## **6. 📝 Sample Queries to Test**
 
-  * *"What is my flight number from my travel manual?"* (Triggers **PDF**)
-  * *"What is the weather in Bengaluru right now?"* (Triggers **Tavily**)
-  * *"Tell me about the history of Lingaraj Temple."* (Triggers **Wikipedia**)
+  * *"What is written in the pdf?"* (Triggers **PDF**)
+  * *"What is the temperature in Bengaluru right now?"* (Triggers **Tavily**)
+  * *"When to travel to goa?"* (Triggers **Wikipedia**)
 
 
 
