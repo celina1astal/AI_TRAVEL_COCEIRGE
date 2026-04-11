@@ -71,7 +71,7 @@ Explain the **"Brain"** of our app :
 
 ## **6. 📝 Sample Queries to Test**
 
-  * *"What is written in the pdf?"* (Triggers **PDF**)
+  * *"What are key topics mentioned in pdf?"* (Triggers **PDF**)
   * *"What is the temperature in Bengaluru right now?"* (Triggers **Tavily**)
   * *"When to travel to goa?"* (Triggers **Wikipedia**)
 
