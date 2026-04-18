@@ -3,135 +3,112 @@ import os
 from langchain_groq import ChatGroq
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.tools import tool
-from langchain_tavily import TavilySearch
+from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
-from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage, AIMessage
+from langchain.tools import tool
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-# --- 1. PAGE CONFIG & SECRETS ---
-st.set_page_config(page_title="AI Travel Agent", page_icon="✈️", layout="wide")
+# --- 1. CONFIGURATION & ERROR HANDLING FOR SECRETS ---
+st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
+st.title("✈️ AI Travel Concierge")
 
-GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
-TAVILY_API_KEY = st.secrets.get("TAVILY_API_KEY")
-os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY or ""
+try:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
+except Exception as e:
+    st.error("Missing API Keys! Please check your .streamlit/secrets.toml file.")
+    st.stop()
 
-# --- 2. RAG ENGINE (CACHED) ---
-@st.cache_resource
-def load_vector_db():
-    if not os.path.exists("travel_sample.pdf"):
-        st.error("Error: 'travel_sample.pdf' not found. Please ensure it is in your project root.")
-        return None
-    
-    try:
-        loader = PyPDFLoader("travel_sample.pdf")
-        pages = loader.load()
-        # Chunks optimized for Llama-3 reasoning
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=150)
-        docs = splitter.split_documents(pages)
-        
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001", 
-            google_api_key=GEMINI_API_KEY
-        )
-        return FAISS.from_documents(docs, embeddings)
-    except Exception as e:
-        st.sidebar.error(f"PDF Vector Error: {e}")
-        return None
-
-vector_db = load_vector_db()
-
-# --- 3. TOOL DEFINITIONS ---
+# --- 2. DEFINE TOOLS WITH ERROR WRAPPERS ---
 
 @tool
 def search_travel_pdf(query: str):
-    """Searches the internal travel manual for specific itineraries, flight codes, or hotel lists."""
-    if vector_db:
+    """Searches the local travel manual and flight itineraries for specific details."""
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
+        # Ensure the 'faiss_index' folder exists from your ingestion script
+        vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = vector_db.similarity_search(query, k=3)
         return "\n".join([d.page_content for d in docs])
-    return "Knowledge base not initialized. Check API keys."
+    except Exception as e:
+        return f"Error accessing PDF database: {str(e)}"
 
-web_search = TavilySearch(max_results=3, search_depth="advanced")
-wiki_api = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=1000)
-wiki_search = WikipediaQueryRun(api_wrapper=wiki_api)
+# Standard Tools
+web_search = TavilySearchResults(tavily_api_key=TAVILY_API_KEY)
+wiki_search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 
-# Mapping dictionary to handle variant tool names returned by different LLMs
 tools = [search_travel_pdf, web_search, wiki_search]
 tool_map = {
     "search_travel_pdf": search_travel_pdf,
     "tavily_search_results_json": web_search,
-    "tavily_search": web_search,
     "wikipedia": wiki_search
 }
 
-# --- 4. AGENT SETUP ---
+# --- 3. INITIALIZE LLM WITH RETRIES ---
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile", 
-    api_key=GROQ_API_KEY
+    model="llama-3.1-8b-instant", # Using 8B for better stability/rate limits
+    api_key=GROQ_API_KEY,
+    max_retries=3
 ).bind_tools(tools)
 
-# --- 5. CHAT INTERFACE ---
-st.title("✈️ AI Travel Concierge")
-
+# --- 4. SESSION STATE MANAGEMENT ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        SystemMessage(content="""You are a professional travel agent. 
-        - For greetings, reply politely without tools.
-        - Use 'search_travel_pdf' for internal flight/plan data from the manual.
-        - Use 'tavily_search_results_json' for live weather, prices, or current news.
-        - Use 'wikipedia' for historical landmarks or general geography.""")
+        SystemMessage(content="You are a helpful Travel Concierge. Use tools to verify facts. If a tool fails, explain the issue to the user politely.")
     ]
 
-# Display history (Filtering out ToolMessages from UI for cleanliness)
-for m in st.session_state.messages:
-    if isinstance(m, HumanMessage):
-        st.chat_message("user").write(m.content)
-    elif isinstance(m, AIMessage) and m.content:
-        st.chat_message("assistant").write(m.content)
+# Display history
+for msg in st.session_state.messages:
+    if isinstance(msg, HumanMessage):
+        st.chat_message("user").write(msg.content)
+    elif isinstance(msg, AIMessage) and msg.content:
+        st.chat_message("assistant").write(msg.content)
 
-# --- 6. AGENT EXECUTION LOOP ---
-if user_input := st.chat_input("Ask me about your trip..."):
-    st.chat_message("user").write(user_input)
+# --- 5. THE MAIN AGENT LOOP ---
+if user_input := st.chat_input("Ask about your trip..."):
     st.session_state.messages.append(HumanMessage(content=user_input))
+    st.chat_message("user").write(user_input)
 
     with st.chat_message("assistant"):
-        # SAFETY: Trim history to last 6 messages + System Prompt to prevent Token Overflows (BadRequestError)
-        # This keeps the context concise but relevant.
-        history_buffer = [st.session_state.messages[0]] + st.session_state.messages[-6:]
-        
-        # First iteration
-        response = llm.invoke(history_buffer)
-        
-        # Process Tool Calls (Limited to 3 iterations to prevent infinite loops)
-        max_turns = 3
-        while hasattr(response, 'tool_calls') and response.tool_calls and max_turns > 0:
-            st.session_state.messages.append(response)
+        try:
+            # Step A: Initial LLM Call
+            response = llm.invoke(st.session_state.messages)
             
-            for tool_call in response.tool_calls:
-                t_name = tool_call["name"]
-                t_args = tool_call["args"]
+            # Step B: Check for Tool Calls
+            if response.tool_calls:
+                st.session_state.messages.append(response)
                 
-                with st.status(f"Acting as Concierge: {t_name}...", expanded=False) as status:
-                    if t_name in tool_map:
-                        result = tool_map[t_name].invoke(t_args)
-                        status.update(label=f"Data retrieved via {t_name}", state="complete")
-                    else:
-                        result = f"Error: Tool '{t_name}' is not available."
-                        status.update(label="Configuration Error", state="error")
+                for tool_call in response.tool_calls:
+                    t_name = tool_call["name"]
+                    t_args = tool_call["args"]
+                    
+                    with st.status(f"Consulting {t_name}...", expanded=False) as status:
+                        try:
+                            # Execute tool safely
+                            result = tool_map[t_name].invoke(t_args)
+                            status.update(label=f"Finished {t_name}", state="complete")
+                        except Exception as tool_err:
+                            # Fallback error message sent back to LLM
+                            result = f"Error: Tool '{t_name}' failed. {str(tool_err)}"
+                            status.update(label=f"Error in {t_name}", state="error")
+                        
+                        st.session_state.messages.append(
+                            ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                        )
                 
-                st.session_state.messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                )
+                # Step C: Final Response Generation
+                final_response = llm.invoke(st.session_state.messages)
+                st.write(final_response.content)
+                st.session_state.messages.append(final_response)
             
-            # Re-summarize with new tool info
-            history_buffer = [st.session_state.messages[0]] + st.session_state.messages[-10:]
-            response = llm.invoke(history_buffer)
-            max_turns -= 1
+            else:
+                # Direct response without tools
+                st.write(response.content)
+                st.session_state.messages.append(response)
 
-        # Final UI Output
-        if response.content:
-            st.markdown(response.content)
-            st.session_state.messages.append(response)
+        except Exception as e:
+            st.error("I'm having trouble connecting to my services. Please try again in a few seconds.")
+            # Print for developer debugging in terminal
+            print(f"CRITICAL ERROR: {e}")
