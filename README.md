@@ -1,5 +1,5 @@
 
- **✈️ AI Travel Concierge: Multi-Modal RAG Agent**
+ **1.✈️ AI Travel Concierge: Multi-Modal RAG Agent**
 
 *A production-ready AI agent that combines private document retrieval (RAG), live web search, and encyclopedic knowledge to provide hyper-local travel assistance.*
 
