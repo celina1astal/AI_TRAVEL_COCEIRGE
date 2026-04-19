@@ -9,22 +9,27 @@ from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-# --- 1. CONFIGURATION & SIDEBAR ---
+# --- 1. CONFIGURATION ---
 st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
 
+# --- 2. [FIX] MOVE SESSION STATE INITIALIZATION HERE ---
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        SystemMessage(content="You are a professional Travel Concierge. Always cite [Document Source] for PDF info.")
+    ]
+
+# --- 3. SIDEBAR (Now it can safely find st.session_state.messages) ---
 with st.sidebar:
     st.title("🛠️ Agent Control Panel")
-    st.info("B.E. Computer Science Project - RVITM")
     
-    # Model Selection
     model_choice = st.selectbox("LLM Model", ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"])
-    temp = st.slider("Temperature (Creativity)", 0.0, 1.0, 0.4)
+    temp = st.slider("Temperature", 0.0, 1.0, 0.4)
     
     st.divider()
     
-    # Chat Export Feature
     def export_chat():
         chat_str = "AI TRAVEL CONCIERGE LOG\n" + "="*30 + "\n"
+        # This will now work because 'messages' is initialized above
         for msg in st.session_state.messages:
             if not isinstance(msg, SystemMessage):
                 role = "User" if isinstance(msg, HumanMessage) else "Assistant"
@@ -37,10 +42,6 @@ with st.sidebar:
         file_name="travel_agent_log.txt",
         mime="text/plain"
     )
-    
-    if st.button("🗑️ Clear Chat History"):
-        st.session_state.messages = [st.session_state.messages[0]]
-        st.rerun()
 
 # --- 2. API KEY VALIDATION ---
 try:
