@@ -20,7 +20,7 @@ if "messages" not in st.session_state:
 
 # --- 3. SIDEBAR (Now it can safely find st.session_state.messages) ---
 with st.sidebar:
-    st.title("🛠️ Agent Control Panel")
+    st.title("⚙️ Agent Control Panel")
     
     model_choice = st.selectbox("LLM Model", ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"])
     temp = st.slider("Temperature", 0.0, 1.0, 0.4)
