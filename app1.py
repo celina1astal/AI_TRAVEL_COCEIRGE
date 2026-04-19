@@ -37,7 +37,7 @@ with st.sidebar:
         return chat_str
 
     st.download_button(
-        label="📥 Download Chat Log",
+        label="⬇️ Download Chat Log",
         data=export_chat(),
         file_name="travel_agent_log.txt",
         mime="text/plain"
