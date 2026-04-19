@@ -68,7 +68,7 @@ tool_map = {
 }
 
 # --- 5. INITIALIZE LLM ---
-llm = ChatGoogleGenerativeAI(model="models/gemini-1.5-flash-latest", google_api_key=GEMINI_API_KEY, temperature=temp).bind_tools(tools)
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GEMINI_API_KEY, temperature=temp).bind_tools(tools)
 
 # --- 6. CHAT UI ---
 st.title("✈️ AI Travel Concierge")
