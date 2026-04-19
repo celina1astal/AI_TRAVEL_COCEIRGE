@@ -60,8 +60,6 @@ st.markdown(f"""
     }}
     </style>
 """, unsafe_allow_html=True)
-    
-
     st.divider()
 
     def export_chat():
