@@ -41,7 +41,7 @@ with st.sidebar:
 
 # --- 4. API & TOOLS ---
 try:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     TAVILY_KEY = st.secrets["TAVILY_API_KEY"]
 except:
     st.error("Check Secrets!")
