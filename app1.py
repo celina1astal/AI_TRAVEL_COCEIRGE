@@ -60,8 +60,7 @@ st.markdown(f"""
     }}
     </style>
 """, unsafe_allow_html=True)
-    st.divider()
-
+   
     def export_chat():
         chat_str = "AI TRAVEL CONCIERGE LOG\n" + "="*30 + "\n"
         # This will now work because 'messages' is initialized above
