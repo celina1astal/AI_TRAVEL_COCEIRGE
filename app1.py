@@ -20,10 +20,10 @@ if "messages" not in st.session_state:
 
 # --- 3. SIDEBAR & THEME LOGIC ---
 with st.sidebar:
-    st.title("⚙️ Customization")
+    st.title("⚙️ Settings")
     temp = st.slider("Temperature", 0.0, 1.0, 0.4)
     theme_choice = st.selectbox(
-        "🎨 Select UI Theme", 
+        "Select UI Theme", 
         ["Corporate Blue", "Nature Green", "Deep Sea", "Sunset Orange"]
     )
 
@@ -48,11 +48,15 @@ with st.sidebar:
         return chat_str
 
     st.download_button(
-        label="📥 Download Chat Log",
+        label="⬇️ Download Chat Log",
         data=export_chat(),
         file_name="travel_agent_log.txt",
         mime="text/plain"
     )
+    # NEW: CLEAR CHAT LOGIC
+    if st.button("🗑️ Clear Chat History"):
+        st.session_state.messages = [st.session_state.messages[0]]
+        st.rerun()
 
 # --- 4. DYNAMIC CSS ---
 st.markdown(f"""
