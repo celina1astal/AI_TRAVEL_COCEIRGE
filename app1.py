@@ -21,6 +21,7 @@ if "messages" not in st.session_state:
 # --- 3. SIDEBAR (Now it can safely find st.session_state.messages) ---
 with st.sidebar:
     st.title("⚙️ Customization")
+    temp = st.slider("Temperature", 0.0, 1.0, 0.4)
     theme_choice = st.selectbox(
         "🎨 Select UI Theme", 
         ["Corporate Blue", "Nature Green", "Deep Sea", "Sunset Orange"]
@@ -59,7 +60,7 @@ st.markdown(f"""
     }}
     </style>
 """, unsafe_allow_html=True)
-    temp = st.slider("Temperature", 0.0, 1.0, 0.4)
+    
 
     st.divider()
 
