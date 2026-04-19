@@ -12,13 +12,13 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, System
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
 
-# --- 2. [FIX] MOVE SESSION STATE INITIALIZATION HERE ---
+# --- 2. SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         SystemMessage(content="You are a professional Travel Concierge. Always cite [Document Source] for PDF info.")
     ]
 
-# --- 3. SIDEBAR (Now it can safely find st.session_state.messages) ---
+# --- 3. SIDEBAR & THEME LOGIC ---
 with st.sidebar:
     st.title("⚙️ Customization")
     temp = st.slider("Temperature", 0.0, 1.0, 0.4)
@@ -27,43 +27,20 @@ with st.sidebar:
         ["Corporate Blue", "Nature Green", "Deep Sea", "Sunset Orange"]
     )
 
-# Map themes to Hex Codes
-theme_colors = {
-    "Corporate Blue": {"primary": "#007BFF", "hover": "#0056b3"},
-    "Nature Green": {"primary": "#28a745", "hover": "#218838"},
-    "Deep Sea": {"primary": "#17a2b8", "hover": "#117a8b"},
-    "Sunset Orange": {"primary": "#fd7e14", "hover": "#d35400"}
-}
+    # Map themes to Hex Codes
+    theme_colors = {
+        "Corporate Blue": {"primary": "#007BFF", "hover": "#0056b3"},
+        "Nature Green": {"primary": "#28a745", "hover": "#218838"},
+        "Deep Sea": {"primary": "#17a2b8", "hover": "#117a8b"},
+        "Sunset Orange": {"primary": "#fd7e14", "hover": "#d35400"}
+    }
 
-selected_color = theme_colors[theme_choice]["primary"]
-hover_color = theme_colors[theme_choice]["hover"]
+    selected_color = theme_colors[theme_choice]["primary"]
+    hover_color = theme_colors[theme_choice]["hover"]
 
-# --- 2. DYNAMIC CSS ---
-st.markdown(f"""
-    <style>
-    /* Primary Buttons and UI Elements */
-    div.stButton > button {{
-        background-color: {selected_color} !important;
-        color: white !important;
-        border-radius: 8px !important;
-        transition: 0.3s !important;
-    }}
-    div.stButton > button:hover {{
-        background-color: {hover_color} !important;
-        border: 1px solid white !important;
-    }}
-    /* Download Button Styling */
-    .stDownloadButton > button {{
-        background-color: {selected_color} !important;
-        color: white !important;
-        width: 100% !important;
-    }}
-    </style>
-""", unsafe_allow_html=True)
-   
+    # --- EXPORT LOGIC (Fixed Indentation) ---
     def export_chat():
         chat_str = "AI TRAVEL CONCIERGE LOG\n" + "="*30 + "\n"
-        # This will now work because 'messages' is initialized above
         for msg in st.session_state.messages:
             if not isinstance(msg, SystemMessage):
                 role = "User" if isinstance(msg, HumanMessage) else "Assistant"
@@ -77,7 +54,29 @@ st.markdown(f"""
         mime="text/plain"
     )
 
-# --- 2. API KEY VALIDATION ---
+# --- 4. DYNAMIC CSS ---
+st.markdown(f"""
+    <style>
+    div.stButton > button {{
+        background-color: {selected_color} !important;
+        color: white !important;
+        border-radius: 8px !important;
+        transition: 0.3s !important;
+        width: 100% !important;
+    }}
+    div.stButton > button:hover {{
+        background-color: {hover_color} !important;
+        border: 1px solid white !important;
+    }}
+    .stDownloadButton > button {{
+        background-color: {selected_color} !important;
+        color: white !important;
+        width: 100% !important;
+    }}
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 5. API KEY VALIDATION ---
 try:
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -86,18 +85,14 @@ except Exception:
     st.error("Missing API Keys! Check .streamlit/secrets.toml")
     st.stop()
 
-# --- 3. TOOLS WITH SOURCE TAGGING ---
-
+# --- 6. TOOLS ---
 @tool
 def search_travel_pdf(query: str):
     """Searches the local travel manual and flight itineraries for specific details."""
     try:
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
-        # allow_dangerous_deserialization is required for loading local FAISS files
         vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = vector_db.similarity_search(query, k=3)
-
-        # Adding Source Tagging for 'Explainability'
         context = "Information found in your local documents:\n"
         for i, d in enumerate(docs):
             context += f"\n[Document Source {i+1}]: {d.page_content}\n"
@@ -105,7 +100,6 @@ def search_travel_pdf(query: str):
     except Exception as e:
         return f"Error accessing PDF database: {str(e)}"
 
-# External Search Tools
 web_search = TavilySearchResults(tavily_api_key=TAVILY_API_KEY)
 wiki_search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 
@@ -116,43 +110,34 @@ tool_map = {
     "wikipedia": wiki_search
 }
 
-# --- 4. INITIALIZE LLM ---
+# --- 7. INITIALIZE LLM (Hardcoded Llama for stability) ---
 llm = ChatGroq(
-    model=model_choice, 
+    model="llama-3.3-70b-versatile", 
     api_key=GROQ_API_KEY,
     temperature=temp,
     max_retries=3
 ).bind_tools(tools)
 
-# --- 5. SESSION STATE ---
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        SystemMessage(content="You are a professional Travel Concierge. Use tools to verify details. Always cite which [Document Source] you are using if information comes from the PDF tool.")
-    ]
-
-# UI Title
+# --- 8. UI DISPLAY ---
 st.title("✈️ AI Travel Concierge")
 
-# Display Messages
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
         st.chat_message("user").write(msg.content)
     elif isinstance(msg, AIMessage) and msg.content:
         st.chat_message("assistant").write(msg.content)
 
-# --- 6. AGENTIC LOOP WITH ERROR HANDLING ---
+# --- 9. AGENTIC LOOP ---
 if user_input := st.chat_input("Ask about your trip..."):
     st.session_state.messages.append(HumanMessage(content=user_input))
     st.chat_message("user").write(user_input)
 
     with st.chat_message("assistant"):
         try:
-            # First pass: Determine if tools are needed
             response = llm.invoke(st.session_state.messages)
 
             if response.tool_calls:
                 st.session_state.messages.append(response)
-
                 for tool_call in response.tool_calls:
                     t_name = tool_call["name"]
                     t_args = tool_call["args"]
@@ -169,16 +154,13 @@ if user_input := st.chat_input("Ask about your trip..."):
                             ToolMessage(content=str(result), tool_call_id=tool_call["id"])
                         )
 
-                # Final synthesis pass
                 final_response = llm.invoke(st.session_state.messages)
                 st.write(final_response.content)
                 st.session_state.messages.append(final_response)
-
             else:
                 st.write(response.content)
                 st.session_state.messages.append(response)
 
         except Exception as e:
             st.error("I encountered a connection error. This is usually due to API Rate Limits.")
-            st.warning("Try switching to the '8B-Instant' model in the sidebar for faster responses.")
             print(f"DEV LOG: {e}")
