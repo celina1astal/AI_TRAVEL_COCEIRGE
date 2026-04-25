@@ -120,6 +120,7 @@ wiki_search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 
 tools = [fetch_travel_deals,search_travel_pdf, web_search, wiki_search]
 tool_map = {
+    "fetch_travel_data": fetch_travel_data,
     "search_travel_pdf": search_travel_pdf,
     "tavily_search_results_json": web_search,
     "wikipedia": wiki_search
