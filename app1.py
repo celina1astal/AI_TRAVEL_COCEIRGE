@@ -91,6 +91,17 @@ except Exception:
 
 # --- 6. TOOLS ---
 @tool
+def fetch_travel_deals(query: str):
+    """
+    Specialized tool to fetch real-time flight prices, hotel availability, 
+    and travel itineraries using the Tavily travel-search optimization.
+    """
+    # We "hardcode" specific keywords to force Tavily to return travel data
+    travel_query = f"{query} live prices flights hotels booking.com tripadvisor"
+    
+    # search_depth="advanced" is a Tavily feature that acts like a specialized API call
+    return web_search.invoke({"query": travel_query, "search_depth": "advanced"})
+@tool
 def search_travel_pdf(query: str):
     """Searches the local travel manual and flight itineraries for specific details."""
     try:
@@ -107,7 +118,7 @@ def search_travel_pdf(query: str):
 web_search = TavilySearchResults(tavily_api_key=TAVILY_API_KEY)
 wiki_search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 
-tools = [search_travel_pdf, web_search, wiki_search]
+tools = [fetch_travel_deals,search_travel_pdf, web_search, wiki_search]
 tool_map = {
     "search_travel_pdf": search_travel_pdf,
     "tavily_search_results_json": web_search,
