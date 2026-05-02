@@ -104,15 +104,15 @@ with st.sidebar:
     st.subheader("📜 Recent Travels")
 
     if st.button("🗑️ Clear History"):
-    conn = sqlite3.connect('travel_data.db')
-    c = conn.cursor()
-    # This empties the history table
-    c.execute("DELETE FROM travel_history")
-    conn.commit()
-    conn.close()
-    st.success("History Cleared!")
-    st.rerun() # Refresh the sidebar to show the change
-    
+        conn = sqlite3.connect('travel_data.db')
+        c = conn.cursor()
+        # This empties the history table
+        c.execute("DELETE FROM travel_history")
+        conn.commit()
+        conn.close()
+        st.success("History Cleared!")
+        st.rerun() # Refresh the sidebar to show the change
+        
     try:
         conn = sqlite3.connect('travel_data.db')
         # Fetch the last 5 unique queries from the database
