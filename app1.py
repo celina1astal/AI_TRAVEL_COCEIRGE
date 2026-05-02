@@ -221,8 +221,7 @@ if user_input := st.chat_input("Ask about your trip..."):
                 st.write(response.content)
                 st.session_state.messages.append(response)
             final_content = response.content
-            
-        save_to_db(user_input, final_response.content)
+            save_to_db(user_input, final_content)
 
         except Exception as e:
             st.error("I encountered a connection error. This is usually due to API Rate Limits.")
