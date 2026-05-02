@@ -64,6 +64,24 @@ with st.sidebar:
     selected_color = theme_colors[theme_choice]["primary"]
     hover_color = theme_colors[theme_choice]["hover"]
 
+    st.divider() # Adds a clean horizontal line
+    st.subheader("📜 Recent Travels")
+    
+    try:
+        conn = sqlite3.connect('travel_data.db')
+        # Fetch the last 5 unique queries from the database
+        history = conn.execute("SELECT DISTINCT user_query FROM travel_history ORDER BY id DESC LIMIT 5").fetchall()
+        conn.close()
+        
+        if history:
+            for item in history:
+                # Use st.caption or st.info to make it look like a list
+                st.caption(f"📍 {item[0]}")
+        else:
+            st.write("No recent searches yet.")
+    except Exception as e:
+        st.caption("History currently unavailable.")
+
     # --- EXPORT LOGIC (Fixed Indentation) ---
     def export_chat():
         chat_str = "AI TRAVEL CONCIERGE LOG\n" + "="*30 + "\n"
@@ -202,6 +220,9 @@ if user_input := st.chat_input("Ask about your trip..."):
             else:
                 st.write(response.content)
                 st.session_state.messages.append(response)
+            final_content = response.content
+            
+        save_to_db(user_input, final_response.content)
 
         except Exception as e:
             st.error("I encountered a connection error. This is usually due to API Rate Limits.")
