@@ -9,6 +9,32 @@ from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
+import sqlite3
+
+# --- DATABASE SETUP ---
+def init_db():
+    conn = sqlite3.connect('travel_data.db')
+    c = conn.cursor()
+    # Create a table to store history if it doesn't exist
+    c.execute('''CREATE TABLE IF NOT EXISTS travel_history 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  user_query TEXT, 
+                  ai_response TEXT, 
+                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+def save_to_db(query, response):
+    conn = sqlite3.connect('travel_data.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO travel_history (user_query, ai_response) VALUES (?, ?)", (query, response))
+    conn.commit()
+    conn.close()
+
+# Initialize the DB when the app starts
+init_db()
+
+
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
 
