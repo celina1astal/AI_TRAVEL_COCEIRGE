@@ -41,17 +41,16 @@ st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
 # --- 2. SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        SystemMessage(content="You are an expert Travel Concierge. When asked for an itinerary: "
-            "1. Use the fetch_travel_data tool to find real flight and hotel prices. "
-            "2. Provide a structured Day-by-Day breakdown. "
-            "3. Include a 'Budget Summary' section at the end with estimated costs. "
-            "4. Keep the tone helpful and professional.")
+        SystemMessage(content="You are an expert Travel Concierge. "
+            "IMPORTANT: Always use the fetch_travel_data tool to get real-time flight and hotel prices. "
+            "Structure your response with: 1. Day-by-Day Breakdown, 2. Interactive Map Suggestions, "
+            "and 3. A final 'Budget Summary' table.")
     ]
 
 def generate_itinerary_prompt(destination, days, budget_type):
     return f"Create a detailed {days}-day itinerary for {destination} with a {budget_type} budget. Include specific flight estimates and hotel suggestions."
 
-with st.expander("📅 Quick Itinerary Generator"):
+with st.expander("📅 Quick Itinerary Generator", expanded=True):
     with st.form("itinerary_form"):
         dest = st.text_input("Where do you want to go?")
         days = st.number_input("Number of Days", min_value=1, max_value=14, value=3)
@@ -59,13 +58,11 @@ with st.expander("📅 Quick Itinerary Generator"):
         submitted = st.form_submit_button("Generate Trip Plan")
 
         if submitted and dest:
-            # Create the prompt
-            itinerary_prompt = f"Create a detailed {days}-day itinerary for {dest} with a {budget} budget."
+            # Construct the automated prompt
+            itinerary_prompt = f"Plan a {days}-day {budget} trip to {dest}. Use your tools for real prices."
             
-            # 1. Add to session state so the chat history tracks it
+            # Add to history and force the agent to act
             st.session_state.messages.append(HumanMessage(content=itinerary_prompt))
-            
-            # 2. FORCE RERUN: This makes Streamlit jump to the Agentic Loop immediately
             st.rerun()
 
 def init_itinerary_db():
