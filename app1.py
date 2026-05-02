@@ -41,8 +41,47 @@ st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
 # --- 2. SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        SystemMessage(content="You are a professional Travel Concierge. Always cite [Document Source] for PDF info.")
+        SystemMessage(content="You are an expert Travel Concierge. When asked for an itinerary: "
+            "1. Use the fetch_travel_data tool to find real flight and hotel prices. "
+            "2. Provide a structured Day-by-Day breakdown. "
+            "3. Include a 'Budget Summary' section at the end with estimated costs. "
+            "4. Keep the tone helpful and professional.")
     ]
+
+def generate_itinerary_prompt(destination, days, budget_type):
+    return f"Create a detailed {days}-day itinerary for {destination} with a {budget_type} budget. Include specific flight estimates and hotel suggestions."
+
+with st.expander("📅 Quick Itinerary Generator"):
+    with st.form("itinerary_form"):
+        dest = st.text_input("Where do you want to go?")
+        days = st.number_input("Number of Days", min_value=1, max_value=14, value=3)
+        budget = st.selectbox("Budget Level", ["Economy", "Standard", "Luxury"])
+        submitted = st.form_submit_button("Generate Trip Plan")
+
+        if submitted and dest:
+            # Create the prompt
+            itinerary_prompt = f"Create a detailed {days}-day itinerary for {dest} with a {budget} budget."
+            
+            # 1. Add to session state so the chat history tracks it
+            st.session_state.messages.append(HumanMessage(content=itinerary_prompt))
+            
+            # 2. FORCE RERUN: This makes Streamlit jump to the Agentic Loop immediately
+            st.rerun()
+
+def init_itinerary_db():
+    conn = sqlite3.connect('travel_data.db')
+    c = conn.cursor()
+    # Table specifically for structured itineraries
+    c.execute('''CREATE TABLE IF NOT EXISTS saved_itineraries 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  destination TEXT, 
+                  duration INTEGER, 
+                  content TEXT, 
+                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+init_itinerary_db()
 
 # --- 3. SIDEBAR & THEME LOGIC ---
 with st.sidebar:
@@ -76,7 +115,7 @@ with st.sidebar:
         if history:
             for item in history:
                 # Use st.caption or st.info to make it look like a list
-                st.caption(f"📍 {item[0]}")
+                st.caption(f" {item[0]}")
         else:
             st.write("No recent searches yet.")
     except Exception as e:
