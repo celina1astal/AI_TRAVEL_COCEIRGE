@@ -227,12 +227,16 @@ llm = ChatGroq(
 # --- 8. UI DISPLAY ---
 st.title("✈️ AI Travel Concierge")
 
+# --- Updated Chat Display ---
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
-        st.chat_message("user").write(msg.content)
-    elif isinstance(msg, AIMessage) and msg.content:
-        st.chat_message("assistant").write(msg.content)
-
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(msg.content)
+    elif isinstance(msg, (ToolMessage, SystemMessage)):
+        continue # Don't show technical logs to the user
+    else:
+        with st.chat_message("assistant", avatar="🤖"):
+            st.markdown(msg.content)
 # --- 9. AGENTIC LOOP ---
 if user_input := st.chat_input("Ask about your trip..."):
     st.session_state.messages.append(HumanMessage(content=user_input))
