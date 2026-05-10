@@ -80,6 +80,15 @@ def init_itinerary_db():
 
 init_itinerary_db()
 
+def display_itinerary_card(day, activity, cost):
+    with st.container(border=True):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.subheader(f"📅 {day}")
+            st.write(activity)
+        with col2:
+            st.metric(label="Est. Cost", value=f"${cost}")
+
 # --- 3. SIDEBAR & THEME LOGIC ---
 with st.sidebar:
     st.title("⚙️ Settings")
