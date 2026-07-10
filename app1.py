@@ -232,7 +232,7 @@ st.title("✈️ AI Travel Concierge")
 
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
-        with st.chat_message("user", avatar="👤"):
+        with st.chat_message("user", avatar="😎"):
             st.markdown(msg.content)
     elif isinstance(msg, (ToolMessage, SystemMessage)):
         continue
