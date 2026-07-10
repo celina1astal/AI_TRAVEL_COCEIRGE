@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import sqlite3
 from langchain_groq import ChatGroq
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -9,13 +10,10 @@ from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-import sqlite3
-
 # --- DATABASE SETUP ---
 def init_db():
     conn = sqlite3.connect('travel_data.db')
     c = conn.cursor()
-    # Create a table to store history if it doesn't exist
     c.execute('''CREATE TABLE IF NOT EXISTS travel_history 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   user_query TEXT, 
@@ -31,44 +29,9 @@ def save_to_db(query, response):
     conn.commit()
     conn.close()
 
-# Initialize the DB when the app starts
-init_db()
-
-
-# --- 1. CONFIGURATION ---
-st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
-
-# --- 2. SESSION STATE INITIALIZATION ---
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        SystemMessage(content="You are an expert Travel Concierge. "
-            "IMPORTANT: Always use the fetch_travel_data tool to get real-time flight and hotel prices. "
-            "Structure your response with: 1. Day-by-Day Breakdown, 2. Interactive Map Suggestions, "
-            "and 3. A final 'Budget Summary' table.")
-    ]
-
-def generate_itinerary_prompt(destination, days, budget_type):
-    return f"Create a detailed {days}-day itinerary for {destination} with a {budget_type} budget. Include specific flight estimates and hotel suggestions."
-
-with st.expander("📅 Quick Itinerary Generator", expanded=True):
-    with st.form("itinerary_form"):
-        dest = st.text_input("Where do you want to go?")
-        days = st.number_input("Number of Days", min_value=1, max_value=14, value=3)
-        budget = st.selectbox("Budget Level", ["Economy", "Standard", "Luxury"])
-        submitted = st.form_submit_button("Generate Trip Plan")
-
-        if submitted and dest:
-            # Construct the automated prompt
-            itinerary_prompt = f"Plan a {days}-day {budget} trip to {dest}. Use your tools for real prices."
-            
-            # Add to history and force the agent to act
-            st.session_state.messages.append(HumanMessage(content=itinerary_prompt))
-            st.rerun()
-
 def init_itinerary_db():
     conn = sqlite3.connect('travel_data.db')
     c = conn.cursor()
-    # Table specifically for structured itineraries
     c.execute('''CREATE TABLE IF NOT EXISTS saved_itineraries 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   destination TEXT, 
@@ -78,18 +41,94 @@ def init_itinerary_db():
     conn.commit()
     conn.close()
 
+# Initialize databases
+init_db()
 init_itinerary_db()
 
-def display_itinerary_card(day, activity, cost):
-    with st.container(border=True):
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.subheader(f"📅 {day}")
-            st.write(activity)
-        with col2:
-            st.metric(label="Est. Cost", value=f"${cost}")
 
-# --- 3. SIDEBAR & THEME LOGIC ---
+# --- 1. CONFIGURATION ---
+st.set_page_config(page_title="✈️ AI Travel Concierge", layout="wide")
+
+
+# --- 2. API KEY VALIDATION ---
+try:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
+except Exception:
+    st.error("Missing API Keys! Check .streamlit/secrets.toml")
+    st.stop()
+
+
+# --- 3. INITIALIZE BASE TOOLS ---
+web_search = TavilySearchResults(tavily_api_key=TAVILY_API_KEY)
+wiki_search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
+
+
+# --- 4. CUSTOM TOOLS ---
+@tool
+def fetch_travel_deals(query: str):
+    """
+    Specialized tool to fetch real-time flight prices, hotel availability, 
+    and travel itineraries using the Tavily travel-search optimization.
+    """
+    travel_query = f"{query} live prices flights hotels booking.com tripadvisor"
+    return web_search.invoke({"query": travel_query})
+
+@tool
+def search_travel_pdf(query: str):
+    """Searches the local travel manual and flight itineraries for specific details."""
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
+        vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+        docs = vector_db.similarity_search(query, k=3)
+        context = "Information found in your local documents:\n"
+        for i, d in enumerate(docs):
+            context += f"\n[Document Source {i+1}]: {d.page_content}\n"
+        return context
+    except Exception as e:
+        return f"Error accessing PDF database: {str(e)}"
+
+tools = [fetch_travel_deals, search_travel_pdf, web_search, wiki_search]
+tool_map = {
+    "fetch_travel_deals": fetch_travel_deals,
+    "search_travel_pdf": search_travel_pdf,
+    "tavily_search_results_json": web_search,
+    "wikipedia": wiki_search
+}
+
+
+# --- 5. SESSION STATE INITIALIZATION ---
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        SystemMessage(content="You are an expert Travel Concierge. "
+            "IMPORTANT: Always use the fetch_travel_deals tool to get real-time flight and hotel prices. "
+            "Structure your response with: 1. Day-by-Day Breakdown, 2. Interactive Map Suggestions, "
+            "and 3. A final 'Budget Summary' table.")
+    ]
+if "run_agent" not in st.session_state:
+    st.session_state.run_agent = False
+if "last_query" not in st.session_state:
+    st.session_state.last_query = ""
+
+
+# --- 6. QUICK ITINERARY GENERATOR ---
+with st.expander("📅 Quick Itinerary Generator", expanded=True):
+    with st.form("itinerary_form"):
+        dest = st.text_input("Where do you want to go?")
+        days = st.number_input("Number of Days", min_value=1, max_value=14, value=3)
+        budget = st.selectbox("Budget Level", ["Economy", "Standard", "Luxury"])
+        submitted = st.form_submit_button("Generate Trip Plan")
+
+        if submitted and dest:
+            itinerary_prompt = f"Plan a {days}-day {budget} trip to {dest}. Use your fetch_travel_deals tool for real prices."
+            st.session_state.messages.append(HumanMessage(content=itinerary_prompt))
+            st.session_state.last_query = itinerary_prompt
+            st.session_state.run_agent = True
+            st.rerun()
+
+
+# --- 7. SIDEBAR & THEME LOGIC ---
 with st.sidebar:
     st.title("⚙️ Settings")
     temp = st.slider("Temperature", 0.0, 1.0, 0.4)
@@ -98,7 +137,6 @@ with st.sidebar:
         ["Corporate Blue", "Nature Green", "Deep Sea", "Sunset Orange"]
     )
 
-    # Map themes to Hex Codes
     theme_colors = {
         "Corporate Blue": {"primary": "#007BFF", "hover": "#0056b3"},
         "Nature Green": {"primary": "#28a745", "hover": "#218838"},
@@ -109,41 +147,38 @@ with st.sidebar:
     selected_color = theme_colors[theme_choice]["primary"]
     hover_color = theme_colors[theme_choice]["hover"]
 
-    st.divider() # Adds a clean horizontal line
+    st.divider()
     st.subheader("📜 Recent Travels")
 
     if st.button("🗑️ Clear History"):
         conn = sqlite3.connect('travel_data.db')
         c = conn.cursor()
-        # This empties the history table
         c.execute("DELETE FROM travel_history")
         conn.commit()
         conn.close()
         st.success("History Cleared!")
-        st.rerun() # Refresh the sidebar to show the change
+        st.rerun()
         
     try:
         conn = sqlite3.connect('travel_data.db')
-        # Fetch the last 5 unique queries from the database
         history = conn.execute("SELECT DISTINCT user_query FROM travel_history ORDER BY id DESC LIMIT 5").fetchall()
         conn.close()
         
         if history:
             for item in history:
-                # Use st.caption or st.info to make it look like a list
-                st.caption(f" {item[0]}")
+                st.caption(f"📍 {item[0]}")
         else:
             st.write("No recent searches yet.")
     except Exception as e:
         st.caption("History currently unavailable.")
 
-    # --- EXPORT LOGIC (Fixed Indentation) ---
     def export_chat():
         chat_str = "AI TRAVEL CONCIERGE LOG\n" + "="*30 + "\n"
         for msg in st.session_state.messages:
             if not isinstance(msg, SystemMessage):
                 role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-                chat_str += f"{role}: {msg.content}\n\n"
+                content = msg.content if msg.content else "[Tool Invocations]"
+                chat_str += f"{role}: {content}\n\n"
         return chat_str
 
     st.download_button(
@@ -152,12 +187,15 @@ with st.sidebar:
         file_name="travel_agent_log.txt",
         mime="text/plain"
     )
-    # NEW: CLEAR CHAT LOGIC
+    
     if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = [st.session_state.messages[0]]
+        st.session_state.run_agent = False
+        st.session_state.last_query = ""
         st.rerun()
 
-# --- 4. DYNAMIC CSS ---
+
+# --- 8. DYNAMIC CSS ---
 st.markdown(f"""
     <style>
     div.stButton > button {{
@@ -179,53 +217,8 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. API KEY VALIDATION ---
-try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    TAVILY_API_KEY = st.secrets["TAVILY_API_KEY"]
-except Exception:
-    st.error("Missing API Keys! Check .streamlit/secrets.toml")
-    st.stop()
 
-# --- 6. TOOLS ---
-@tool
-def fetch_travel_deals(query: str):
-    """
-    Specialized tool to fetch real-time flight prices, hotel availability, 
-    and travel itineraries using the Tavily travel-search optimization.
-    """
-    # We "hardcode" specific keywords to force Tavily to return travel data
-    travel_query = f"{query} live prices flights hotels booking.com tripadvisor"
-    
-    # search_depth="advanced" is a Tavily feature that acts like a specialized API call
-    return web_search.invoke({"query": travel_query, "search_depth": "advanced"})
-@tool
-def search_travel_pdf(query: str):
-    """Searches the local travel manual and flight itineraries for specific details."""
-    try:
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
-        vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-        docs = vector_db.similarity_search(query, k=3)
-        context = "Information found in your local documents:\n"
-        for i, d in enumerate(docs):
-            context += f"\n[Document Source {i+1}]: {d.page_content}\n"
-        return context
-    except Exception as e:
-        return f"Error accessing PDF database: {str(e)}"
-
-web_search = TavilySearchResults(tavily_api_key=TAVILY_API_KEY)
-wiki_search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
-
-tools = [fetch_travel_deals,search_travel_pdf, web_search, wiki_search]
-tool_map = {
-    "fetch_travel_deals": fetch_travel_deals,
-    "search_travel_pdf": search_travel_pdf,
-    "tavily_search_results_json": web_search,
-    "wikipedia": wiki_search
-}
-
-# --- 7. INITIALIZE LLM (Hardcoded Llama for stability) ---
+# --- 9. INITIALIZE LLM ---
 llm = ChatGroq(
     model="llama-3.3-70b-versatile", 
     api_key=GROQ_API_KEY,
@@ -233,30 +226,47 @@ llm = ChatGroq(
     max_retries=3
 ).bind_tools(tools)
 
-# --- 8. UI DISPLAY ---
+
+# --- 10. UI DISPLAY & CHAT HISTORY ---
 st.title("✈️ AI Travel Concierge")
 
-# --- Updated Chat Display ---
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
         with st.chat_message("user", avatar="👤"):
             st.markdown(msg.content)
     elif isinstance(msg, (ToolMessage, SystemMessage)):
-        continue # Don't show technical logs to the user
+        continue
     else:
-        with st.chat_message("assistant", avatar="🤖"):
-            st.markdown(msg.content)
-# --- 9. AGENTIC LOOP ---
-if user_input := st.chat_input("Ask about your trip..."):
+        if msg.content:
+            with st.chat_message("assistant", avatar="🤖"):
+                st.markdown(msg.content)
+
+
+# --- 11. CHAT INPUT DETECTION ---
+user_input = st.chat_input("Ask about your trip...")
+
+if user_input:
     st.session_state.messages.append(HumanMessage(content=user_input))
-    st.chat_message("user").write(user_input)
+    st.session_state.last_query = user_input
+    st.session_state.run_agent = True
+    st.rerun() 
 
-    with st.chat_message("assistant"):
+
+# --- 12. RECURSIVE AGENTIC PROCESSING LOOP ---
+if st.session_state.run_agent:
+    st.session_state.run_agent = False # Instantly clear state flag
+    
+    with st.chat_message("assistant", avatar="🤖"):
         try:
+            max_iterations = 5
+            iterations = 0
+            
             response = llm.invoke(st.session_state.messages)
-
-            if response.tool_calls:
+            
+            while response.tool_calls and iterations < max_iterations:
                 st.session_state.messages.append(response)
+                iterations += 1
+                
                 for tool_call in response.tool_calls:
                     t_name = tool_call["name"]
                     t_args = tool_call["args"]
@@ -270,18 +280,4 @@ if user_input := st.chat_input("Ask about your trip..."):
                             status.update(label=f"Error in {t_name}", state="error")
 
                         st.session_state.messages.append(
-                            ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                        )
 
-                final_response = llm.invoke(st.session_state.messages)
-                st.write(final_response.content)
-                st.session_state.messages.append(final_response)
-            else:
-                st.write(response.content)
-                st.session_state.messages.append(response)
-            final_content = response.content
-            save_to_db(user_input, final_content)
-
-        except Exception as e:
-            st.error("I encountered a connection error. This is usually due to API Rate Limits.")
-            print(f"DEV LOG: {e}")
