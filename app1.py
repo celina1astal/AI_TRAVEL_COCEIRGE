@@ -238,7 +238,7 @@ for msg in st.session_state.messages:
         continue
     else:
         if msg.content:
-            with st.chat_message("assistant", avatar="🤖"):
+            with st.chat_message("assistant", avatar="👾"):
                 st.markdown(msg.content)
 
 
