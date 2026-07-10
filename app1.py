@@ -279,5 +279,22 @@ if st.session_state.run_agent:
                             result = f"Technical Failure in {t_name}: {str(tool_err)}"
                             status.update(label=f"Error in {t_name}", state="error")
 
-                        st.session_state.messages.append(
+                                                st.session_state.messages.append(
+                            ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                        )
+                
+                response = llm.invoke(st.session_state.messages)
+
+            # Display final text answer to user
+            st.markdown(response.content)
+            st.session_state.messages.append(response)
+            
+            # Save final response context to SQLite DB
+            save_to_db(st.session_state.last_query, response.content)
+            st.rerun()
+
+        except Exception as e:
+            st.error("I encountered an issue processing your request.")
+            st.caption(f"DEV LOG: {str(e)}")
+
 
