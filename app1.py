@@ -252,7 +252,7 @@ if user_input:
     st.rerun() 
 
 
-# --- 12. RECURSIVE AGENTIC PROCESSING LOOP ---
+# --- 12. RECURSIVE AGENTIC PROCESSING LOOP ---# 
 if st.session_state.run_agent:
     st.session_state.run_agent = False # Instantly clear state flag
     
@@ -279,7 +279,7 @@ if st.session_state.run_agent:
                             result = f"Technical Failure in {t_name}: {str(tool_err)}"
                             status.update(label=f"Error in {t_name}", state="error")
 
-                                                st.session_state.messages.append(
+                        st.session_state.messages.append(
                             ToolMessage(content=str(result), tool_call_id=tool_call["id"])
                         )
                 
@@ -296,5 +296,6 @@ if st.session_state.run_agent:
         except Exception as e:
             st.error("I encountered an issue processing your request.")
             st.caption(f"DEV LOG: {str(e)}")
+
 
 
