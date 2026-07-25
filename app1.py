@@ -138,9 +138,9 @@ with st.sidebar:
     )
 
     theme_colors = {
-        "Corporate Blue": {"primary": "#007BFF", "hover": "#0056b3"},
+        "Deep Sea": {"primary": "#007BFF", "hover": "#0056b3"},
         "Nature Green": {"primary": "#28a745", "hover": "#218838"},
-        "Deep Sea": {"primary": "#17a2b8", "hover": "#117a8b"},
+        "Corporate Blue": {"primary": "#17a2b8", "hover": "#117a8b"},
         "Sunset Orange": {"primary": "#fd7e14", "hover": "#d35400"}
     }
 
