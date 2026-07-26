@@ -206,7 +206,7 @@ with st.sidebar:
                 docs = loader.load()
                 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
                 split_docs = text_splitter.split_documents(docs)
-                embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
+                embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004", google_api_key=GEMINI_API_KEY)
                 vector_db = FAISS.from_documents(split_docs, embeddings)
                 vector_db.save_local("faiss_index")
                 
