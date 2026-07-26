@@ -84,7 +84,7 @@ def search_travel_pdf(query: str):
         from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         index_dir = "faiss_index"
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
+        embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004", google_api_key=GEMINI_API_KEY)
         
         # Check if the FAISS index folder exists
         if not os.path.exists(index_dir):
