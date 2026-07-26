@@ -197,27 +197,44 @@ with st.sidebar:
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-    # Re-build the FAISS index automatically to include the new document
-        with st.spinner("Processing PDF and indexing text vectors..."):
+            # --- FIXED BATCHED UPLOADER LOGIC ---
+        with st.spinner("Parsing text and calculating vector embeddings..."):
             try:
-                from langchain_community.document_loaders import PyPDFLoader
-                from langchain_text_splitters import RecursiveCharacterTextSplitter
+                import shutil
+                import time
                 
-                # Force delete old index if it exists so it updates cleanly
+                # 1. Clear out old indexes to prevent content pollution
                 if os.path.exists("faiss_index"):
                     shutil.rmtree("faiss_index")
                     
                 loader = PyPDFLoader(file_path)
                 docs = loader.load()
-                text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                
+                # Use a tighter chunk size to prevent massive text blocks from breaking the stream
+                text_splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=120)
                 split_docs = text_splitter.split_documents(docs)
+                
                 embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=GEMINI_API_KEY)
-                vector_db = FAISS.from_documents(split_docs, embeddings)
+                
+                # Process chunks in small batches of 5 to avoid unexpected stream drops
+                batch_size = 5
+                
+                # Initialize your FAISS database with just the first small batch
+                vector_db = FAISS.from_documents(split_docs[:batch_size], embeddings)
+                
+                # Sequentially push the remaining batches with a cooling window
+                for i in range(batch_size, len(split_docs), batch_size):
+                    batch = split_docs[i:i + batch_size]
+                    vector_db.add_documents(batch)
+                    time.sleep(0.4)  # 400ms pause to let the Google API connection recover safely
+                    
+                # Save the completed stable index locally
                 vector_db.save_local("faiss_index")
                 
                 st.sidebar.success(f"✅ Loaded: {uploaded_file.name}")
             except Exception as index_err:
                 st.sidebar.error(f"Failed to process text: {str(index_err)}")
+
     
     st.divider()
     
