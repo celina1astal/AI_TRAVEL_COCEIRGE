@@ -81,38 +81,48 @@ from langchain_community.vectorstores import FAISS
 import os
 
 @tool
-def search_travel_pdf(query: str) -> str:
-    """
-    Searches the local travel manual and flight itineraries for specific details.
-    Pass only a simple text string of keywords as the query argument.
-    """
+def search_travel_pdf(query: str):
+    """Searches the local travel manual and flight itineraries for specific details."""
     try:
+        import os
+        from langchain_community.document_loaders import PyPDFLoader
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
         index_dir = "faiss_index"
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=GEMINI_API_KEY)
         
-        # 1. Verify that the user has already uploaded a PDF and built the index
+        # Check if the FAISS index folder exists
         if not os.path.exists(index_dir):
-            return "Error: No travel data has been indexed yet. Please upload a PDF in the sidebar first."
+            doc_dir = "uploaded_documents"
+            # If no files have been uploaded yet, return an instruction message
+            if not os.path.exists(doc_dir) or not os.listdir(doc_dir):
+                return "Error: No travel documents have been indexed yet. Please upload a PDF manual in the sidebar first."
             
-        # 2. Clean up any accidental symbols or brackets left behind by the LLM
-        clean_query = str(query).replace("{", "").replace("}", "").replace('"', '').replace("'", "").strip()
-        
-        # 3. Load the embedding configuration and connect to the local FAISS database
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=st.secrets["GEMINI_API_KEY"])
-        vector_db = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
-        
-        # 4. Search the document files for the top 3 closest matches
-        docs = vector_db.similarity_search(clean_query, k=3)
-        
-        # 5. Extract and format the matching text block pieces cleanly
-        context = "Information found in your local travel manual:\n"
+            # Combine all uploaded PDFs into a single searchable index
+            all_docs = []
+            for file in os.listdir(doc_dir):
+                if file.endswith(".pdf"):
+                    loader = PyPDFLoader(os.path.join(doc_dir, file))
+                    all_docs.extend(loader.load())
+            
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            split_docs = text_splitter.split_documents(all_docs)
+            
+            vector_db = FAISS.from_documents(split_docs, embeddings)
+            vector_db.save_local(index_dir)
+        else:
+            vector_db = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
+            
+        docs = vector_db.similarity_search(query, k=3)
+        context = "Information found in your local documents:\n"
         for i, d in enumerate(docs):
             page_num = d.metadata.get('page', 0) + 1
             context += f"\n[Document Source {i+1} (Page {page_num})]: {d.page_content}\n"
-            
         return context
         
     except Exception as e:
-        return f"Error reading the travel PDF database: {str(e)}"
+        return f"Error accessing PDF database: {str(e)}"
+
 
 tools = [fetch_travel_deals, search_travel_pdf, web_search, wiki_search]
 tool_map = {
