@@ -77,7 +77,12 @@ def fetch_travel_deals(query: str):
 
 @tool
 def search_travel_pdf(query: str):
-    """Searches the local travel manual and flight itineraries for specific details."""
+    """
+    Searches the local travel manual and flight itineraries for specific details.
+    
+    IMPORTANT: Provide only the plain text search keywords as a string for the query argument. 
+    Do not include any JSON markers, markdown code block wrappers, or raw tool strings.
+    """
     try:
         import os
         from langchain_community.document_loaders import PyPDFLoader
@@ -89,7 +94,6 @@ def search_travel_pdf(query: str):
         # Check if the FAISS index folder exists
         if not os.path.exists(index_dir):
             doc_dir = "uploaded_documents"
-            # If no files have been uploaded yet, return an instruction message
             if not os.path.exists(doc_dir) or not os.listdir(doc_dir):
                 return "Error: No travel documents have been indexed yet. Please upload a PDF manual in the sidebar first."
             
@@ -108,7 +112,10 @@ def search_travel_pdf(query: str):
         else:
             vector_db = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
             
-        docs = vector_db.similarity_search(query, k=3)
+        # Strip any accidental brackets or formatting characters left by the model
+        clean_query = str(query).replace("{", "").replace("}", "").replace('"', '').replace("'", "")
+            
+        docs = vector_db.similarity_search(clean_query, k=3)
         context = "Information found in your local documents:\n"
         for i, d in enumerate(docs):
             page_num = d.metadata.get('page', 0) + 1
@@ -117,6 +124,7 @@ def search_travel_pdf(query: str):
         
     except Exception as e:
         return f"Error accessing PDF database: {str(e)}"
+
 
 
 tools = [fetch_travel_deals, search_travel_pdf, web_search, wiki_search]
