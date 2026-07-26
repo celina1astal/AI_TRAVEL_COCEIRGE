@@ -83,32 +83,31 @@ def search_travel_pdf(query: str):
         from langchain_community.document_loaders import PyPDFLoader
         from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-        pdf_path = "goa_guide.pdf"  # Replace with your actual file name if different
         index_dir = "faiss_index"
-        
         embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=GEMINI_API_KEY)
         
-        # Check if the FAISS index folder is missing. If yes, construct it right now.
+        # Check if the FAISS index folder exists
         if not os.path.exists(index_dir):
-            if not os.path.exists(pdf_path):
-                return f"Error: The database folder '{index_dir}' was not found, and your backup document '{pdf_path}' is missing from the project directory."
+            doc_dir = "uploaded_documents"
+            # If no files have been uploaded yet, return an instruction message
+            if not os.path.exists(doc_dir) or not os.listdir(doc_dir):
+                return "Error: No travel documents have been indexed yet. Please upload a PDF manual in the sidebar first."
             
-            # 1. Load and parse raw content from the PDF file
-            loader = PyPDFLoader(pdf_path)
-            docs = loader.load()
+            # Combine all uploaded PDFs into a single searchable index
+            all_docs = []
+            for file in os.listdir(doc_dir):
+                if file.endswith(".pdf"):
+                    loader = PyPDFLoader(os.path.join(doc_dir, file))
+                    all_docs.extend(loader.load())
             
-            # 2. Divide massive pages into clean, manageable text segments
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-            split_docs = text_splitter.split_documents(docs)
+            split_docs = text_splitter.split_documents(all_docs)
             
-            # 3. Process strings into vectors and save local file shards
             vector_db = FAISS.from_documents(split_docs, embeddings)
             vector_db.save_local(index_dir)
         else:
-            # Load the existing index smoothly if it already exists
             vector_db = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
             
-        # Execute query optimization similarity calculations
         docs = vector_db.similarity_search(query, k=3)
         context = "Information found in your local documents:\n"
         for i, d in enumerate(docs):
@@ -118,6 +117,7 @@ def search_travel_pdf(query: str):
         
     except Exception as e:
         return f"Error accessing PDF database: {str(e)}"
+
 
 
 
