@@ -79,15 +79,45 @@ def fetch_travel_deals(query: str):
 def search_travel_pdf(query: str):
     """Searches the local travel manual and flight itineraries for specific details."""
     try:
+        import os
+        from langchain_community.document_loaders import PyPDFLoader
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+        index_dir = "faiss_index"
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
-        vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+        
+        # Check if the FAISS index folder exists
+        if not os.path.exists(index_dir):
+            doc_dir = "uploaded_documents"
+            # If no files have been uploaded yet, return an instruction message
+            if not os.path.exists(doc_dir) or not os.listdir(doc_dir):
+                return "Error: No travel documents have been indexed yet. Please upload a PDF manual in the sidebar first."
+            
+            # Combine all uploaded PDFs into a single searchable index
+            all_docs = []
+            for file in os.listdir(doc_dir):
+                if file.endswith(".pdf"):
+                    loader = PyPDFLoader(os.path.join(doc_dir, file))
+                    all_docs.extend(loader.load())
+            
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            split_docs = text_splitter.split_documents(all_docs)
+            
+            vector_db = FAISS.from_documents(split_docs, embeddings)
+            vector_db.save_local(index_dir)
+        else:
+            vector_db = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
+            
         docs = vector_db.similarity_search(query, k=3)
         context = "Information found in your local documents:\n"
         for i, d in enumerate(docs):
-            context += f"\n[Document Source {i+1}]: {d.page_content}\n"
+            page_num = d.metadata.get('page', 0) + 1
+            context += f"\n[Document Source {i+1} (Page {page_num})]: {d.page_content}\n"
         return context
+        
     except Exception as e:
         return f"Error accessing PDF database: {str(e)}"
+
 
 tools = [fetch_travel_deals, search_travel_pdf, web_search, wiki_search]
 tool_map = {
@@ -148,6 +178,44 @@ with st.sidebar:
     hover_color = theme_colors[theme_choice]["hover"]
 
     st.divider()
+
+    st.subheader("📁 Knowledge Base Base")
+    uploaded_file = st.file_uploader("Upload Travel Manual (PDF)", type=["pdf"])
+    
+    if uploaded_file is not None:
+        import shutil
+        # Create directories safely if they are missing
+        os.makedirs("uploaded_documents", exist_ok=True)
+        file_path = os.path.join("uploaded_documents", uploaded_file.name)
+        
+        # Save the uploaded file to disk
+        with open(file_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+    # Re-build the FAISS index automatically to include the new document
+        with st.spinner("Processing PDF and indexing text vectors..."):
+            try:
+                from langchain_community.document_loaders import PyPDFLoader
+                from langchain_text_splitters import RecursiveCharacterTextSplitter
+                
+                # Force delete old index if it exists so it updates cleanly
+                if os.path.exists("faiss_index"):
+                    shutil.rmtree("faiss_index")
+                    
+                loader = PyPDFLoader(file_path)
+                docs = loader.load()
+                text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                split_docs = text_splitter.split_documents(docs)
+                embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
+                vector_db = FAISS.from_documents(split_docs, embeddings)
+                vector_db.save_local("faiss_index")
+                
+                st.sidebar.success(f"✅ Loaded: {uploaded_file.name}")
+            except Exception as index_err:
+                st.sidebar.error(f"Failed to process text: {str(index_err)}")
+    
+    st.divider()
+    
     st.subheader("📜 Recent Travels")
 
     if st.button("🗑️ Clear History"):
