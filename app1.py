@@ -197,11 +197,14 @@ with st.sidebar:
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-            # --- FIXED BATCHED UPLOADER LOGIC ---
+                # --- FIXED BATCHED UPLOADER LOGIC WITH IMPORTS ---
         with st.spinner("Parsing text and calculating vector embeddings..."):
             try:
                 import shutil
                 import time
+                # ADD THESE TWO IMPORT LINES RIGHT HERE:
+                from langchain_community.document_loaders import PyPDFLoader
+                from langchain_text_splitters import RecursiveCharacterTextSplitter
                 
                 # 1. Clear out old indexes to prevent content pollution
                 if os.path.exists("faiss_index"):
@@ -234,6 +237,7 @@ with st.sidebar:
                 st.sidebar.success(f"✅ Loaded: {uploaded_file.name}")
             except Exception as index_err:
                 st.sidebar.error(f"Failed to process text: {str(index_err)}")
+
 
     
     st.divider()
