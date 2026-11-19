@@ -314,7 +314,7 @@ st.markdown(f"""
 
 # --- 9. INITIALIZE LLM ---
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile", 
+    model="openai/gpt-oss-120b", 
     api_key=GROQ_API_KEY,
     temperature=temp,
     max_retries=3
