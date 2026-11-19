@@ -51,7 +51,7 @@ vector_db = load_knowledge_base()
 @tool
 def travel_kb(query: str):
     """Search the travel PDF for specific answers about trips, hotels, or flights."""
-    llm_rag = ChatGroq(model="llama-3.1-8b-instant", api_key=GROQ_API_KEY)
+    llm_rag = ChatGroq(model="openai/gpt-oss-20b", api_key=GROQ_API_KEY)
     
     system_prompt = (
         "Use the following pieces of retrieved context to answer the question. "
