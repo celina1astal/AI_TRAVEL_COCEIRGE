@@ -1,45 +1,60 @@
-import streamlit as st
 import os
+import shutil
 import sqlite3
+import time
+import streamlit as st
 from langchain_groq import ChatGroq
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.tools import tool
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
+
 
 # --- DATABASE SETUP ---
 def init_db():
-    conn = sqlite3.connect('travel_data.db')
+    conn = sqlite3.connect("travel_data.db")
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS travel_history 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  user_query TEXT, 
-                  ai_response TEXT, 
-                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS travel_history
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  user_query TEXT,
+                  ai_response TEXT,
+                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+    )
     conn.commit()
     conn.close()
+
 
 def save_to_db(query, response):
-    conn = sqlite3.connect('travel_data.db')
+    conn = sqlite3.connect("travel_data.db")
     c = conn.cursor()
-    c.execute("INSERT INTO travel_history (user_query, ai_response) VALUES (?, ?)", (query, response))
+    c.execute(
+        "INSERT INTO travel_history (user_query, ai_response) VALUES (?, ?)",
+        (query, response),
+    )
     conn.commit()
     conn.close()
 
+
 def init_itinerary_db():
-    conn = sqlite3.connect('travel_data.db')
+    conn = sqlite3.connect("travel_data.db")
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS saved_itineraries 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  destination TEXT, 
-                  duration INTEGER, 
-                  content TEXT, 
-                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS saved_itineraries
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  destination TEXT,
+                  duration INTEGER,
+                  content TEXT,
+                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+    )
     conn.commit()
     conn.close()
+
 
 # Initialize databases
 init_db()
@@ -69,57 +84,52 @@ wiki_search = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 @tool
 def fetch_travel_deals(query: str):
     """
-    Specialized tool to fetch real-time flight prices, hotel availability, 
-    and travel itineraries using the Tavily travel-search optimization.
+    Specialized tool to fetch real-time flight prices, hotel availability,
+    and travel itineraries using web search.
     """
     travel_query = f"{query} live prices flights hotels booking.com tripadvisor"
     return web_search.invoke({"query": travel_query})
 
-from langchain.tools import tool
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import FAISS
-import os
 
 @tool
 def search_travel_pdf(query: str):
     """Searches the local travel manual and flight itineraries for specific details."""
     try:
-        import os
-        from langchain_community.document_loaders import PyPDFLoader
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-
         index_dir = "faiss_index"
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=GEMINI_API_KEY)
-        
-        # Check if the FAISS index folder exists
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001", google_api_key=GEMINI_API_KEY
+        )
+
         if not os.path.exists(index_dir):
             doc_dir = "uploaded_documents"
-            # If no files have been uploaded yet, return an instruction message
             if not os.path.exists(doc_dir) or not os.listdir(doc_dir):
                 return "Error: No travel documents have been indexed yet. Please upload a PDF manual in the sidebar first."
-            
-            # Combine all uploaded PDFs into a single searchable index
+
             all_docs = []
             for file in os.listdir(doc_dir):
                 if file.endswith(".pdf"):
                     loader = PyPDFLoader(os.path.join(doc_dir, file))
                     all_docs.extend(loader.load())
-            
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000, chunk_overlap=200
+            )
             split_docs = text_splitter.split_documents(all_docs)
-            
+
             vector_db = FAISS.from_documents(split_docs, embeddings)
             vector_db.save_local(index_dir)
         else:
-            vector_db = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
-            
+            vector_db = FAISS.load_local(
+                index_dir, embeddings, allow_dangerous_deserialization=True
+            )
+
         docs = vector_db.similarity_search(query, k=3)
         context = "Information found in your local documents:\n"
         for i, d in enumerate(docs):
-            page_num = d.metadata.get('page', 0) + 1
-            context += f"\n[Document Source {i+1} (Page {page_num})]: {d.page_content}\n"
+            page_num = d.metadata.get("page", 0) + 1
+            context += f"\n[Document Source {i+1} (Page {page_num})]: {d.page_content[:800]}\n"
         return context
-        
+
     except Exception as e:
         return f"Error accessing PDF database: {str(e)}"
 
@@ -128,23 +138,29 @@ tools = [fetch_travel_deals, search_travel_pdf, web_search, wiki_search]
 tool_map = {
     "fetch_travel_deals": fetch_travel_deals,
     "search_travel_pdf": search_travel_pdf,
-     "web_search": web_search, 
-    "wiki_search": wiki_search  
+    "web_search": web_search,
+    "wiki_search": wiki_search,
 }
 
 
 # --- 5. SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        SystemMessage(content="You are an expert Travel Concierge. "
-            "IMPORTANT: Always use the fetch_travel_deals tool to get real-time flight and hotel prices. "
-            "Structure your response with: 1. Day-by-Day Breakdown, 2. Interactive Map Suggestions, "
-            "and 3. A final 'Budget Summary' table.")
+        SystemMessage(
+            content=(
+                "You are an expert Travel Concierge. "
+                "IMPORTANT: Always use the fetch_travel_deals tool to get real-time flight and hotel prices. "
+                "Structure your response with: 1. Day-by-Day Breakdown, 2. Interactive Map Suggestions, "
+                "and 3. A final 'Budget Summary' table."
+            )
+        )
     ]
 if "run_agent" not in st.session_state:
     st.session_state.run_agent = False
 if "last_query" not in st.session_state:
     st.session_state.last_query = ""
+if "last_uploaded_name" not in st.session_state:
+    st.session_state.last_uploaded_name = ""
 
 
 # --- 6. QUICK ITINERARY GENERATOR ---
@@ -156,7 +172,10 @@ with st.expander("📅 Quick Itinerary Generator", expanded=True):
         submitted = st.form_submit_button("Generate Trip Plan")
 
         if submitted and dest:
-            itinerary_prompt = f"Plan a {days}-day {budget} trip to {dest}. Use your fetch_travel_deals tool for real prices."
+            itinerary_prompt = (
+                f"Plan a {days}-day {budget} trip to {dest}. "
+                "Use your fetch_travel_deals tool for real prices."
+            )
             st.session_state.messages.append(HumanMessage(content=itinerary_prompt))
             st.session_state.last_query = itinerary_prompt
             st.session_state.run_agent = True
@@ -166,17 +185,22 @@ with st.expander("📅 Quick Itinerary Generator", expanded=True):
 # --- 7. SIDEBAR & THEME LOGIC ---
 with st.sidebar:
     st.title("⚙️ Settings")
+    model_choice = st.selectbox(
+        "Groq Model",
+        ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"],
+        index=0,
+    )
     temp = st.slider("Temperature", 0.0, 1.0, 0.4)
     theme_choice = st.selectbox(
-        "Select UI Theme", 
-        ["Corporate Blue", "Nature Green", "Deep Sea", "Sunset Orange"]
+        "Select UI Theme",
+        ["Corporate Blue", "Nature Green", "Deep Sea", "Sunset Orange"],
     )
 
     theme_colors = {
         "Deep Sea": {"primary": "#007BFF", "hover": "#0056b3"},
         "Nature Green": {"primary": "#28a745", "hover": "#218838"},
         "Corporate Blue": {"primary": "#17a2b8", "hover": "#117a8b"},
-        "Sunset Orange": {"primary": "#fd7e14", "hover": "#d35400"}
+        "Sunset Orange": {"primary": "#fd7e14", "hover": "#d35400"},
     }
 
     selected_color = theme_colors[theme_choice]["primary"]
@@ -184,90 +208,80 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader("📁 Knowledge Base Base")
+    st.subheader("📁 Knowledge Base")
     uploaded_file = st.file_uploader("Upload Travel Manual (PDF)", type=["pdf"])
-    
-    if uploaded_file is not None:
-        import shutil
-        # Create directories safely if they are missing
+
+    if (
+        uploaded_file is not None
+        and uploaded_file.name != st.session_state.last_uploaded_name
+    ):
         os.makedirs("uploaded_documents", exist_ok=True)
         file_path = os.path.join("uploaded_documents", uploaded_file.name)
-        
-        # Save the uploaded file to disk
+
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-                # --- FIXED BATCHED UPLOADER LOGIC WITH IMPORTS ---
         with st.spinner("Parsing text and calculating vector embeddings..."):
             try:
-                import shutil
-                import time
-                # ADD THESE TWO IMPORT LINES RIGHT HERE:
-                from langchain_community.document_loaders import PyPDFLoader
-                from langchain_text_splitters import RecursiveCharacterTextSplitter
-                
-                # 1. Clear out old indexes to prevent content pollution
                 if os.path.exists("faiss_index"):
                     shutil.rmtree("faiss_index")
-                    
+
                 loader = PyPDFLoader(file_path)
                 docs = loader.load()
-                
-                # Use a tighter chunk size to prevent massive text blocks from breaking the stream
-                text_splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=120)
+
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=600, chunk_overlap=120
+                )
                 split_docs = text_splitter.split_documents(docs)
-                
-                embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=GEMINI_API_KEY)
-                
-                # Process chunks in small batches of 5 to avoid unexpected stream drops
+
+                embeddings = GoogleGenerativeAIEmbeddings(
+                    model="models/gemini-embedding-001", google_api_key=GEMINI_API_KEY
+                )
+
                 batch_size = 5
-                
-                # Initialize your FAISS database with just the first small batch
                 vector_db = FAISS.from_documents(split_docs[:batch_size], embeddings)
-                
-                # Sequentially push the remaining batches with a cooling window
+
                 for i in range(batch_size, len(split_docs), batch_size):
-                    batch = split_docs[i:i + batch_size]
+                    batch = split_docs[i : i + batch_size]
                     vector_db.add_documents(batch)
-                    time.sleep(0.4)  # 400ms pause to let the Google API connection recover safely
-                    
-                # Save the completed stable index locally
+                    time.sleep(0.4)
+
                 vector_db.save_local("faiss_index")
-                
+                st.session_state.last_uploaded_name = uploaded_file.name
                 st.sidebar.success(f"✅ Loaded: {uploaded_file.name}")
             except Exception as index_err:
                 st.sidebar.error(f"Failed to process text: {str(index_err)}")
 
-
-    
     st.divider()
-    
+
     st.subheader("📜 Recent Travels")
 
     if st.button("🗑️ Clear History"):
-        conn = sqlite3.connect('travel_data.db')
+        conn = sqlite3.connect("travel_data.db")
         c = conn.cursor()
         c.execute("DELETE FROM travel_history")
         conn.commit()
         conn.close()
         st.success("History Cleared!")
         st.rerun()
-        
+
     try:
-        conn = sqlite3.connect('travel_data.db')
-        history = conn.execute("SELECT DISTINCT user_query FROM travel_history ORDER BY id DESC LIMIT 5").fetchall()
+        conn = sqlite3.connect("travel_data.db")
+        history = conn.execute(
+            "SELECT DISTINCT user_query FROM travel_history ORDER BY id DESC LIMIT 5"
+        ).fetchall()
         conn.close()
-        
+
         if history:
             for item in history:
                 st.caption(f"📍 {item[0]}")
         else:
             st.write("No recent searches yet.")
-    except Exception as e:
+    except Exception:
         st.caption("History currently unavailable.")
 
     def export_chat():
-        chat_str = "AI TRAVEL CONCIERGE LOG\n" + "="*30 + "\n"
+        chat_str = "AI TRAVEL CONCIERGE LOG\n" + "=" * 30 + "\n"
         for msg in st.session_state.messages:
             if not isinstance(msg, SystemMessage):
                 role = "User" if isinstance(msg, HumanMessage) else "Assistant"
@@ -279,9 +293,9 @@ with st.sidebar:
         label="⬇️ Download Chat Log",
         data=export_chat(),
         file_name="travel_agent_log.txt",
-        mime="text/plain"
+        mime="text/plain",
     )
-    
+
     if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = [st.session_state.messages[0]]
         st.session_state.run_agent = False
@@ -290,7 +304,8 @@ with st.sidebar:
 
 
 # --- 8. DYNAMIC CSS ---
-st.markdown(f"""
+st.markdown(
+    f"""
     <style>
     div.stButton > button {{
         background-color: {selected_color} !important;
@@ -309,15 +324,18 @@ st.markdown(f"""
         width: 100% !important;
     }}
     </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # --- 9. INITIALIZE LLM ---
 llm = ChatGroq(
-    model="meta-llama/llama-4-scout-17b-16e-instruct", 
+    model=model_choice,
     api_key=GROQ_API_KEY,
     temperature=temp,
-    max_retries=3
+    max_completion_tokens=1024,
+    max_retries=3,
 ).bind_tools(tools)
 
 
@@ -343,53 +361,54 @@ if user_input:
     st.session_state.messages.append(HumanMessage(content=user_input))
     st.session_state.last_query = user_input
     st.session_state.run_agent = True
-    st.rerun() 
+    st.rerun()
 
 
-# --- 12. RECURSIVE AGENTIC PROCESSING LOOP ---# 
+# --- 12. RECURSIVE AGENTIC PROCESSING LOOP ---
 if st.session_state.run_agent:
-    st.session_state.run_agent = False # Instantly clear state flag
-    
+    st.session_state.run_agent = False
+
     with st.chat_message("assistant", avatar="🤖"):
         try:
             max_iterations = 5
             iterations = 0
-            
+
             response = llm.invoke(st.session_state.messages)
-            
+
             while response.tool_calls and iterations < max_iterations:
                 st.session_state.messages.append(response)
                 iterations += 1
-                
+
                 for tool_call in response.tool_calls:
                     t_name = tool_call["name"]
                     t_args = tool_call["args"]
 
-                    with st.status(f"Acting as Agent: {t_name}...", expanded=False) as status:
+                    with st.status(
+                        f"Acting as Agent: {t_name}...", expanded=False
+                    ) as status:
                         try:
                             result = tool_map[t_name].invoke(t_args)
-                            status.update(label=f"Completed {t_name}", state="complete")
+                            status.update(
+                                label=f"Completed {t_name}", state="complete"
+                            )
                         except Exception as tool_err:
                             result = f"Technical Failure in {t_name}: {str(tool_err)}"
                             status.update(label=f"Error in {t_name}", state="error")
 
                         st.session_state.messages.append(
-                            ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                            ToolMessage(
+                                content=str(result)[:2500],
+                                tool_call_id=tool_call["id"],
+                            )
                         )
-                
+
                 response = llm.invoke(st.session_state.messages)
 
-            # Display final text answer to user
             st.markdown(response.content)
             st.session_state.messages.append(response)
-            
-            # Save final response context to SQLite DB
             save_to_db(st.session_state.last_query, response.content)
             st.rerun()
 
         except Exception as e:
             st.error("I encountered an issue processing your request.")
             st.caption(f"DEV LOG: {str(e)}")
-
-
-
